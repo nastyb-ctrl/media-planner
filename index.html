@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Media Planner</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="authView" class="auth-wrap">
+    <div class="auth-card">
+      <div class="brand">MEDIA<span>PLANNER</span></div>
+      <p class="muted">Общий контент-план команды</p>
+
+      <div id="authMessage" class="message"></div>
+
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+
+      <label>Пароль</label>
+      <input id="password" type="password" placeholder="Минимум 6 символов" autocomplete="current-password">
+
+      <div class="auth-actions">
+        <button id="loginBtn" class="primary">Войти</button>
+        <button id="signupBtn" class="secondary">Создать аккаунт</button>
+      </div>
+      <p class="tiny">После регистрации подтверди email, если это включено в настройках Supabase.</p>
+    </div>
+  </div>
+
+  <div id="appView" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">MEDIA<span>PLANNER</span></div>
+      <button class="nav active" data-view="calendar">Календарь</button>
+      <button class="nav" data-view="list">Все задачи</button>
+      <button class="nav" data-view="team">Команда</button>
+      <div class="sidebar-bottom">
+        <button id="notifyBtn" class="nav">🔔 Уведомления</button>
+        <button id="logoutBtn" class="nav">Выйти</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Календарь</h1>
+          <div id="userEmail" class="muted"></div>
+        </div>
+        <div class="top-actions">
+          <button id="todayBtn" class="secondary">Сегодня</button>
+          <button id="addTaskBtn" class="primary">＋ Контент</button>
+        </div>
+      </header>
+
+      <section id="calendarView" class="view">
+        <div class="calendar-head">
+          <button id="prevMonth" class="icon">‹</button>
+          <h2 id="monthTitle"></h2>
+          <button id="nextMonth" class="icon">›</button>
+        </div>
+        <div class="weekdays">
+          <div>Пн</div><div>Вт</div><div>Ср</div><div>Чт</div><div>Пт</div><div>Сб</div><div>Вс</div>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section id="listView" class="view hidden">
+        <div class="filters">
+          <input id="searchInput" placeholder="Поиск по контенту…">
+          <select id="statusFilter">
+            <option value="">Все статусы</option>
+            <option value="planned">Запланировано</option>
+            <option value="progress">В работе</option>
+            <option value="done">Готово</option>
+          </select>
+        </div>
+        <div id="taskList" class="task-list"></div>
+      </section>
+
+      <section id="teamView" class="view hidden">
+        <div class="team-card">
+          <h2>Команда</h2>
+          <p class="muted">Чтобы коллега появился здесь, он должен зарегистрироваться в этом проекте.</p>
+          <div id="teamList"></div>
+          <div class="join-box">
+            <input id="projectCodeInput" placeholder="Код проекта">
+            <button id="joinProjectBtn" class="primary">Присоединиться</button>
+          </div>
+          <p class="tiny">Код проекта можно получить у администратора. Он показывается после создания проекта.</p>
+
+          <div class="telegram-box">
+            <h3>Telegram</h3>
+            <p id="telegramStatus" class="muted">Telegram пока не подключён.</p>
+            <div class="telegram-actions">
+              <button id="connectTelegramBtn" class="primary">📲 Подключить Telegram</button>
+              <button id="checkTelegramBtn" class="secondary">Проверить подключение</button>
+            </div>
+            <p class="tiny">Нажми «Подключить Telegram», открой бота и нажми Start. Затем вернись сюда и нажми «Проверить подключение».</p>
+            <div id="telegramMessage" class="message"></div>
+          </div>
+
+          <div id="projectInfo" class="project-info"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="taskModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="modalTitle">Новый контент</h2>
+        <button id="closeModal" class="icon">×</button>
+      </div>
+
+      <input type="hidden" id="taskId">
+      <label>Название</label>
+      <input id="taskTitle" placeholder="Например: Reels — backstage">
+
+      <div class="two">
+        <div>
+          <label>Дата</label>
+          <input id="taskDate" type="date">
+        </div>
+        <div>
+          <label>Время</label>
+          <input id="taskTime" type="time">
+        </div>
+      </div>
+
+      <div class="two">
+        <div>
+          <label>Площадка</label>
+          <select id="taskPlatform">
+            <option>Instagram</option><option>Telegram</option><option>VK</option><option>TikTok</option><option>YouTube</option><option>Другое</option>
+          </select>
+        </div>
+        <div>
+          <label>Тип</label>
+          <select id="taskType">
+            <option>Reels</option><option>Post</option><option>Stories</option><option>Видео</option><option>Статья</option><option>Другое</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Ответственный</label>
+      <select id="taskOwner"><option value="">Не назначен</option></select>
+
+      <label>Статус</label>
+      <select id="taskStatus">
+        <option value="planned">Запланировано</option>
+        <option value="progress">В работе</option>
+        <option value="done">Готово</option>
+      </select>
+
+      <label>Описание</label>
+      <textarea id="taskDescription" rows="4" placeholder="Текст, ТЗ, ссылка, детали…"></textarea>
+
+      <label>Ссылка</label>
+      <input id="taskLink" type="url" placeholder="https://…">
+
+      <div class="reminders">
+        <label class="check"><input id="rem24" type="checkbox" checked> за 24 часа</label>
+        <label class="check"><input id="rem3" type="checkbox"> за 3 часа</label>
+        <label class="check"><input id="rem1" type="checkbox"> за 1 час</label>
+      </div>
+
+      <div id="modalMessage" class="message"></div>
+      <div class="modal-actions">
+        <button id="deleteTaskBtn" class="danger hidden">Удалить</button>
+        <div class="spacer"></div>
+        <button id="cancelTaskBtn" class="secondary">Отмена</button>
+        <button id="saveTaskBtn" class="primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,291 +1,359 @@
 const SUPABASE_URL = "https://vkvrwayzqrlsfsgjjwpy.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-kj7hiC7uou3db2wpwFM_w_jgXQNpnb";
 
-const supabase = window.supabase.createClient(
+const { createClient } = supabase;
+
+const db = createClient(
   SUPABASE_URL,
-  SUPABASE_KEY
+  SUPABASE_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
+  }
 );
 
 const tg = window.Telegram?.WebApp;
 
 let currentUser = null;
+let currentProfile = null;
 let currentProject = null;
 
 let members = [];
 let contents = [];
 let publications = [];
-let publicationAssignees = [];
-
-let currentMonth = new Date();
-currentMonth.setDate(1);
-
-let analyticsPeriod = "week";
+let assigneeRows = [];
 
 let dayStyles = {};
 
-let editingContentId = null;
+let currentMonth = new Date();
+
+let activePeriod = "week";
+
+let realtimeChannels = [];
+
+let memberPoll = null;
 
 
-/* =========================================================
-   HELPERS
-========================================================= */
+const $ = id =>
+  document.getElementById(id);
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+
+const esc = (value = "") =>
+  String(value).replace(
+    /[&<>"']/g,
+    c =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[c])
+  );
+
+
+const pad = n =>
+  String(n).padStart(2, "0");
+
+
+const isoToday = () => {
+
+  const d = new Date();
+
+  return `${d.getFullYear()}-${pad(
+    d.getMonth() + 1
+  )}-${pad(d.getDate())}`;
+
+};
+
+
+const monthNames = [
+  "январь",
+  "февраль",
+  "март",
+  "апрель",
+  "май",
+  "июнь",
+  "июль",
+  "август",
+  "сентябрь",
+  "октябрь",
+  "ноябрь",
+  "декабрь"
+];
+
+
+const shortMonths = [
+  "янв",
+  "фев",
+  "мар",
+  "апр",
+  "май",
+  "июн",
+  "июл",
+  "авг",
+  "сен",
+  "окт",
+  "ноя",
+  "дек"
+];
+
+
+function telegramInitData() {
+
+  return tg?.initData || "";
+
 }
 
-function toISO(date) {
-  const d = new Date(date);
 
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+function toast(text) {
 
-  return `${y}-${m}-${day}`;
+  const old =
+    document.querySelector(".toast");
+
+  if (old) {
+    old.remove();
+  }
+
+
+  const el =
+    document.createElement("div");
+
+  el.className = "toast";
+
+  el.textContent = text;
+
+  document.body.appendChild(el);
+
+
+  setTimeout(
+    () => el.remove(),
+    2200
+  );
+
 }
 
-function formatDate(dateString) {
-  if (!dateString) return "";
 
-  const date = new Date(`${dateString}T00:00:00`);
+function avatarHtml(
+  profile,
+  cls = ""
+) {
 
-  return date.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long"
-  });
-}
-
-function formatShortDate(dateString) {
-  if (!dateString) return "";
-
-  const date = new Date(`${dateString}T00:00:00`);
-
-  return date.toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit"
-  });
-}
-
-function formatMonth(date) {
-  return date.toLocaleDateString("ru-RU", {
-    month: "long",
-    year: "numeric"
-  });
-}
-
-function initials(profile) {
-  const first =
-    profile?.first_name ||
-    profile?.username ||
+  const name =
+    profile?.telegram_first_name ||
+    profile?.telegram_username ||
     "?";
 
-  const last =
-    profile?.last_name || "";
 
-  return (
-    `${first.charAt(0)}${last.charAt(0)}`
-  ).toUpperCase();
+  const initials =
+    name
+      .slice(0, 2)
+      .toUpperCase();
+
+
+  if (
+    profile?.telegram_photo_url
+  ) {
+
+    return `
+      <div class="avatar ${cls}">
+        <img
+          src="${esc(profile.telegram_photo_url)}"
+          alt=""
+        >
+      </div>
+    `;
+
+  }
+
+
+  return `
+    <div class="avatar ${cls}">
+      ${esc(initials)}
+    </div>
+  `;
+
 }
 
-function memberName(member) {
-  if (!member) return "Участник";
 
-  const fullName = [
-    member.first_name,
-    member.last_name
-  ]
-    .filter(Boolean)
-    .join(" ");
+function platformClass(
+  platform
+) {
 
-  return (
-    fullName ||
-    member.username ||
-    "Участник"
-  );
-}
-
-function publicationPlatformClass(platform) {
   return String(platform || "")
-    .replace(/[^a-zA-ZА-Яа-я0-9]/g, "");
-}
-
-function getPublicationsForDate(date) {
-  return publications
-    .filter(p => p.publication_date === date)
-    .sort((a, b) =>
-      String(a.publication_time || "")
-        .localeCompare(String(b.publication_time || ""))
+    .toLowerCase()
+    .replace(
+      /[^a-zа-яё]/gi,
+      ""
     );
+
 }
 
-function getContent(contentId) {
-  return contents.find(
-    c => c.id === contentId
-  );
-}
 
-function getAssigneeIds(publicationId) {
-  return publicationAssignees
-    .filter(
-      a => a.publication_id === publicationId
-    )
-    .map(a => a.user_id);
-}
+function formatDate(
+  date
+) {
 
-function getMember(userId) {
-  return members.find(
-    m => m.id === userId
-  );
+  if (!date) {
+    return "";
+  }
+
+
+  const [
+    y,
+    m,
+    d
+  ] =
+    date
+      .split("-")
+      .map(Number);
+
+
+  return `${d} ${shortMonths[m - 1]}`;
+
 }
 
 
 /* =========================================================
-   TELEGRAM
+   START
 ========================================================= */
 
-function setupTelegram() {
+async function boot() {
+
   try {
+
     tg?.ready();
     tg?.expand();
 
+
     if (tg?.setHeaderColor) {
-      tg.setHeaderColor("#f7f7f5");
+      tg.setHeaderColor(
+        "#f6f6f3"
+      );
     }
+
 
     if (tg?.setBackgroundColor) {
-      tg.setBackgroundColor("#f7f7f5");
+      tg.setBackgroundColor(
+        "#f6f6f3"
+      );
     }
-  } catch (error) {
-    console.warn(
-      "Telegram setup error:",
-      error
-    );
-  }
-}
 
-
-/* =========================================================
-   AUTH
-========================================================= */
-
-async function authenticate() {
-  setupTelegram();
-
-  const authScreen =
-    document.getElementById("authScreen");
-
-  const app =
-    document.getElementById("app");
-
-  try {
 
     const {
-      data: sessionData,
-      error: sessionError
-    } = await supabase.auth.getSession();
+      data: sessionData
+    } =
+      await db.auth.getSession();
 
-    if (sessionError) {
-      throw sessionError;
-    }
 
     if (!sessionData.session) {
 
       const {
-        data,
         error
       } =
-        await supabase.auth.signInAnonymously();
+        await db.auth
+          .signInAnonymously();
 
       if (error) {
         throw error;
       }
 
-      currentUser =
-        data.user;
+    }
 
-    } else {
 
-      currentUser =
-        sessionData.session.user;
+    const {
+      data: sessionNow
+    } =
+      await db.auth.getSession();
+
+
+    currentUser =
+      sessionNow.session.user;
+
+
+    if (!telegramInitData()) {
+
+      throw new Error(
+        "Откройте планер через Telegram."
+      );
 
     }
 
 
-    const initData =
-      tg?.initData || "";
-
-    if (initData) {
-
-      const {
-        error
-      } =
-        await supabase.functions.invoke(
-          "telegram-auth",
-          {
-            body: {
-              initData
-            }
+    const authResult =
+      await db.functions.invoke(
+        "telegram-auth",
+        {
+          body: {
+            initData:
+              telegramInitData()
           }
-        );
+        }
+      );
 
-      if (error) {
-        console.warn(
-          "Telegram auth warning:",
-          error
-        );
-      }
 
+    if (authResult.error) {
+      throw authResult.error;
     }
 
 
-    await loadProject();
+    await loadProfile();
 
-    await loadMembers();
+    await ensureProject();
 
-    await loadData();
+    await loadAll();
 
-    await loadDayStyles();
+    setupRealtime();
 
-    subscribeRealtime();
+    startMemberPolling();
 
-    startTeamRefresh();
+    showApp();
 
-    authScreen?.classList.add(
-      "hidden"
+  } catch (err) {
+
+    console.error(err);
+
+    showAuthError(
+      err?.message ||
+      "Не удалось открыть планер"
     );
-
-    app?.classList.remove(
-      "hidden"
-    );
-
-    renderAll();
-
-  } catch (error) {
-
-    console.error(
-      "Authentication error:",
-      error
-    );
-
-    if (authScreen) {
-      authScreen.innerHTML = `
-        <div class="auth-card">
-          <div class="logo-mark">!</div>
-          <h1>Не удалось открыть планер</h1>
-          <p>
-            Попробуй закрыть и снова открыть
-            приложение в Telegram.
-          </p>
-        </div>
-      `;
-    }
 
   }
+
+}
+
+
+/* =========================================================
+   PROFILE
+========================================================= */
+
+async function loadProfile() {
+
+  const {
+    data,
+    error
+  } =
+    await db
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        currentUser.id
+      )
+      .maybeSingle();
+
+
+  if (error) {
+    throw error;
+  }
+
+
+  currentProfile =
+    data;
+
 }
 
 
@@ -293,88 +361,117 @@ async function authenticate() {
    PROJECT
 ========================================================= */
 
-async function loadProject() {
+async function ensureProject() {
 
-  const {
+  let {
     data,
     error
   } =
-    await supabase
-      .from("project_members")
-      .select(`
-        project_id,
-        projects (
-          id,
-          name
-        )
-      `)
-      .eq(
-        "user_id",
-        currentUser.id
+    await db
+      .from("projects")
+      .select("*")
+      .order(
+        "created_at",
+        {
+          ascending: true
+        }
       )
-      .limit(1);
+      .limit(1)
+      .maybeSingle();
+
 
   if (error) {
     throw error;
   }
 
-  if (data?.length) {
 
-    currentProject =
-      data[0].projects;
+  if (!data) {
 
-    return;
+    const {
+      data: created,
+      error: createError
+    } =
+      await db.rpc(
+        "create_default_project"
+      );
+
+
+    if (createError) {
+      throw createError;
+    }
+
+
+    data =
+      Array.isArray(created)
+        ? created[0]
+        : created;
+
   }
+
+
+  if (!data) {
+
+    throw new Error(
+      "Не найден проект команды."
+    );
+
+  }
+
+
+  currentProject =
+    data;
 
 
   const {
-    data: projects,
-    error: projectError
+    error: memberError
   } =
-    await supabase
-      .from("projects")
-      .select("*")
-      .order(
-        "created_at",
-        { ascending: true }
-      )
-      .limit(1);
-
-  if (projectError) {
-    throw projectError;
-  }
-
-  if (projects?.length) {
-
-    currentProject =
-      projects[0];
-
-    try {
-
-      await supabase
-        .from("project_members")
-        .insert({
+    await db
+      .from("project_members")
+      .upsert(
+        {
           project_id:
             currentProject.id,
+
           user_id:
             currentUser.id
-        });
+        },
+        {
+          onConflict:
+            "project_id,user_id",
 
-    } catch (error) {
-
-      console.warn(
-        "Could not add current user:",
-        error
+          ignoreDuplicates:
+            true
+        }
       );
 
-    }
 
-    return;
+  if (memberError) {
+
+    console.warn(
+      "project membership:",
+      memberError.message
+    );
+
   }
 
-  throw new Error(
-    "Проект не найден"
-  );
+}
+
+
+/* =========================================================
+   LOAD ALL
+========================================================= */
+
+async function loadAll() {
+
+  await Promise.all([
+    loadMembers(),
+    loadContent(),
+    loadDayStyles()
+  ]);
+
+
+  renderEverything();
+
 }
 
 
@@ -388,146 +485,162 @@ async function loadMembers() {
     data,
     error
   } =
-    await supabase
+    await db
       .from("profiles")
-      .select(`
-        id,
-        first_name,
-        last_name,
-        username,
-        telegram_id
-      `)
+      .select(
+        "id,telegram_id,telegram_username,telegram_first_name,telegram_photo_url"
+      )
       .not(
         "telegram_id",
         "is",
         null
       )
       .order(
-        "first_name",
-        { ascending: true }
+        "telegram_first_name",
+        {
+          ascending: true
+        }
       );
+
 
   if (error) {
 
     console.warn(
-      "Could not load all profiles:",
-      error
+      "members:",
+      error.message
     );
 
-    await loadProjectMembers();
+    members = [];
 
     return;
   }
 
-  members = data || [];
-}
-
-
-async function loadProjectMembers() {
-
-  const {
-    data,
-    error
-  } =
-    await supabase
-      .from("project_members")
-      .select(`
-        user_id,
-        profiles (
-          id,
-          first_name,
-          last_name,
-          username,
-          telegram_id
-        )
-      `)
-      .eq(
-        "project_id",
-        currentProject.id
-      );
-
-  if (error) {
-    throw error;
-  }
 
   members =
-    (data || [])
-      .map(row => row.profiles)
-      .filter(Boolean);
+    data || [];
+
+
+  renderTeam();
+
 }
 
 
 /* =========================================================
-   CONTENT DATA
+   CONTENT
 ========================================================= */
 
-async function loadData() {
+async function loadContent() {
 
-  const [
-    contentResult,
-    publicationResult,
-    assigneeResult
-  ] =
-    await Promise.all([
-
-      supabase
-        .from("content")
-        .select("*")
-        .eq(
-          "project_id",
-          currentProject.id
-        )
-        .order(
-          "created_at",
-          { ascending: false }
-        ),
-
-      supabase
-        .from("publications")
-        .select("*")
-        .eq(
-          "project_id",
-          currentProject.id
-        )
-        .order(
-          "publication_date",
-          { ascending: true }
-        )
-        .order(
-          "publication_time",
-          { ascending: true }
-        ),
-
-      supabase
-        .from("publication_assignees")
-        .select(`
-          publication_id,
-          user_id
-        `)
-    ]);
-
-
-  if (contentResult.error) {
-    throw contentResult.error;
+  if (!currentProject) {
+    return;
   }
 
-  if (publicationResult.error) {
-    throw publicationResult.error;
+
+  const {
+    data: c,
+    error: ce
+  } =
+    await db
+      .from("content")
+      .select("*")
+      .eq(
+        "project_id",
+        currentProject.id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false
+        }
+      );
+
+
+  if (ce) {
+    throw ce;
   }
 
-  if (assigneeResult.error) {
-    throw assigneeResult.error;
+
+  const {
+    data: p,
+    error: pe
+  } =
+    await db
+      .from("publications")
+      .select("*")
+      .eq(
+        "project_id",
+        currentProject.id
+      )
+      .order(
+        "publication_date",
+        {
+          ascending: true
+        }
+      )
+      .order(
+        "publication_time",
+        {
+          ascending: true,
+          nullsFirst: false
+        }
+      );
+
+
+  if (pe) {
+    throw pe;
+  }
+
+
+  const ids =
+    (p || []).map(
+      x => x.id
+    );
+
+
+  let a = [];
+
+
+  if (ids.length) {
+
+    const {
+      data,
+      error: ae
+    } =
+      await db
+        .from(
+          "publication_assignees"
+        )
+        .select(
+          "publication_id,user_id"
+        )
+        .in(
+          "publication_id",
+          ids
+        );
+
+
+    if (ae) {
+      throw ae;
+    }
+
+
+    a =
+      data || [];
+
   }
 
 
   contents =
-    contentResult.data || [];
+    c || [];
+
 
   publications =
-    publicationResult.data || [];
+    p || [];
 
-  publicationAssignees =
-    assigneeResult.data || [];
+
+  assigneeRows =
+    a;
+
 }
 
 
@@ -537,26 +650,33 @@ async function loadData() {
 
 async function loadDayStyles() {
 
+  if (!currentProject) {
+    return;
+  }
+
+
   const {
     data,
     error
   } =
-    await supabase
-      .from("calendar_day_styles")
-      .select(`
-        date,
-        color
-      `)
+    await db
+      .from(
+        "calendar_day_styles"
+      )
+      .select(
+        "date,color"
+      )
       .eq(
         "project_id",
         currentProject.id
       );
 
+
   if (error) {
 
     console.warn(
-      "Calendar colors are unavailable:",
-      error
+      "day styles:",
+      error.message
     );
 
     dayStyles = {};
@@ -564,12 +684,17 @@ async function loadDayStyles() {
     return;
   }
 
-  dayStyles = {};
 
-  (data || []).forEach(row => {
-    dayStyles[row.date] =
-      row.color;
-  });
+  dayStyles =
+    Object.fromEntries(
+      (data || []).map(
+        x => [
+          x.date,
+          x.color
+        ]
+      )
+    );
+
 }
 
 
@@ -578,16 +703,22 @@ async function saveDayColor(
   color
 ) {
 
-  if (!currentProject) return;
+  if (!currentProject) {
+    return;
+  }
 
 
-  if (!color) {
+  if (
+    color === "white"
+  ) {
 
     const {
       error
     } =
-      await supabase
-        .from("calendar_day_styles")
+      await db
+        .from(
+          "calendar_day_styles"
+        )
         .delete()
         .eq(
           "project_id",
@@ -598,43 +729,212 @@ async function saveDayColor(
           date
         );
 
+
     if (error) {
-      console.error(error);
-      return;
+      throw error;
     }
+
 
     delete dayStyles[date];
 
   } else {
 
     const {
+      data,
       error
     } =
-      await supabase
-        .from("calendar_day_styles")
+      await db
+        .from(
+          "calendar_day_styles"
+        )
         .upsert(
           {
             project_id:
               currentProject.id,
+
             date,
+
             color
           },
           {
             onConflict:
               "project_id,date"
           }
-        );
+        )
+        .select(
+          "date,color"
+        )
+        .single();
+
 
     if (error) {
-      console.error(error);
-      return;
+      throw error;
     }
 
-    dayStyles[date] = color;
+
+    dayStyles[date] =
+      data.color;
+
   }
 
 
   renderCalendar();
+
+}
+
+
+function dayColorValue(
+  date
+) {
+
+  return (
+    dayStyles[date] ||
+    "white"
+  );
+
+}
+
+
+/* =========================================================
+   DAY EDITOR
+========================================================= */
+
+function openDayEditor(
+  date
+) {
+
+  const dayPubs =
+    publications
+      .filter(
+        p =>
+          p.publication_date === date
+      )
+      .sort(
+        sortPublication
+      );
+
+
+  if (dayPubs.length) {
+
+    openModal(
+      dayPubs[0].content_id
+    );
+
+  } else {
+
+    openModal(
+      null,
+      date
+    );
+
+  }
+
+}
+
+
+function showDayPalette(
+  cell,
+  date
+) {
+
+  document
+    .querySelectorAll(
+      ".day-palette"
+    )
+    .forEach(
+      x => x.remove()
+    );
+
+
+  const palette =
+    document.createElement(
+      "div"
+    );
+
+
+  palette.className =
+    "day-palette";
+
+
+  palette.innerHTML = `
+
+    <button
+      type="button"
+      data-color="white"
+      aria-label="Белый"
+      title="Белый"
+    ></button>
+
+    <button
+      type="button"
+      data-color="yellow"
+      aria-label="Бледно-жёлтый"
+      title="Бледно-жёлтый"
+    ></button>
+
+    <button
+      type="button"
+      data-color="purple"
+      aria-label="Бледно-фиолетовый"
+      title="Бледно-фиолетовый"
+    ></button>
+
+    <button
+      type="button"
+      data-color="green"
+      aria-label="Бледно-зелёный"
+      title="Бледно-зелёный"
+    ></button>
+
+  `;
+
+
+  cell.appendChild(
+    palette
+  );
+
+
+  palette
+    .querySelectorAll(
+      "[data-color]"
+    )
+    .forEach(
+      btn => {
+
+        btn.addEventListener(
+          "click",
+          async e => {
+
+            e.stopPropagation();
+
+
+            try {
+
+              await saveDayColor(
+                date,
+                btn.dataset.color
+              );
+
+
+              palette.remove();
+
+            } catch (err) {
+
+              console.error(err);
+
+              toast(
+                err.message ||
+                "Не удалось изменить цвет"
+              );
+
+            }
+
+          }
+        );
+
+      }
+    );
+
 }
 
 
@@ -642,99 +942,142 @@ async function saveDayColor(
    REALTIME
 ========================================================= */
 
-function subscribeRealtime() {
+function setupRealtime() {
 
-  supabase
-    .channel(
-      "media-planner-content"
-    )
-
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "content",
-        filter:
-          `project_id=eq.${currentProject.id}`
-      },
-      async () => {
-
-        await loadData();
-        renderAll();
-
-      }
-    )
-
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "publications",
-        filter:
-          `project_id=eq.${currentProject.id}`
-      },
-      async () => {
-
-        await loadData();
-        renderAll();
-
-      }
-    )
-
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "publication_assignees"
-      },
-      async () => {
-
-        await loadData();
-        renderAll();
-
-      }
-    )
-
-    .subscribe();
-}
+  realtimeChannels
+    .forEach(
+      ch =>
+        db.removeChannel(ch)
+    );
 
 
-function startTeamRefresh() {
+  realtimeChannels = [];
 
-  setInterval(
-    async () => {
 
-      try {
+  const tables = [
+    "content",
+    "publications",
+    "publication_assignees"
+  ];
 
-        await loadMembers();
 
-        renderTeam();
+  tables.forEach(
+    table => {
 
-        renderAnalytics();
+      const ch =
+        db
+          .channel(
+            `planner-${table}`
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table
+            },
+            async () => {
 
-      } catch (error) {
+              await loadContent();
 
-        console.warn(
-          "Team refresh:",
-          error
-        );
+              renderEverything();
 
-      }
+            }
+          )
+          .subscribe();
 
-    },
-    15000
+
+      realtimeChannels.push(
+        ch
+      );
+
+    }
   );
+
 }
 
 
 /* =========================================================
-   RENDER ALL
+   TEAM AUTO REFRESH
 ========================================================= */
 
-function renderAll() {
+function startMemberPolling() {
+
+  clearInterval(
+    memberPoll
+  );
+
+
+  memberPoll =
+    setInterval(
+      async () => {
+
+        await loadMembers();
+
+      },
+      15000
+    );
+
+}
+
+
+/* =========================================================
+   APP
+========================================================= */
+
+function showApp() {
+
+  $("authScreen")
+    .classList
+    .add("hidden");
+
+
+  $("app")
+    .classList
+    .remove("hidden");
+
+
+  switchView(
+    "calendarView"
+  );
+
+}
+
+
+function showAuthError(
+  message
+) {
+
+  const card =
+    document.querySelector(
+      ".auth-card"
+    );
+
+
+  card.innerHTML = `
+
+    <div class="logo-mark">
+      !
+    </div>
+
+    <h1>
+      Не удалось открыть
+    </h1>
+
+    <p>
+      ${esc(message)}
+    </p>
+
+  `;
+
+}
+
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function renderEverything() {
 
   renderCalendar();
 
@@ -745,6 +1088,39 @@ function renderAll() {
   renderTeam();
 
   renderAnalytics();
+
+}
+
+
+function switchView(
+  viewId
+) {
+
+  document
+    .querySelectorAll(
+      ".view"
+    )
+    .forEach(
+      v =>
+        v.classList.toggle(
+          "active",
+          v.id === viewId
+        )
+    );
+
+
+  document
+    .querySelectorAll(
+      ".nav-item"
+    )
+    .forEach(
+      b =>
+        b.classList.toggle(
+          "active",
+          b.dataset.view === viewId
+        )
+    );
+
 }
 
 
@@ -754,42 +1130,34 @@ function renderAll() {
 
 function renderCalendar() {
 
-  const grid =
-    document.getElementById(
-      "calendarGrid"
-    );
-
-  const monthLabel =
-    document.getElementById(
-      "monthLabel"
-    );
-
-  if (!grid) return;
-
-
-  monthLabel.textContent =
-    formatMonth(currentMonth);
-
-
   const year =
     currentMonth.getFullYear();
+
 
   const month =
     currentMonth.getMonth();
 
-  const firstDay =
+
+  const grid =
+    $("calendarGrid");
+
+
+  if (!grid) {
+    return;
+  }
+
+
+  $("monthLabel").textContent =
+    `${monthNames[month]} ${year}`;
+
+
+  const first =
     new Date(
       year,
       month,
       1
     );
 
-  let start =
-    firstDay.getDay();
-
-  if (start === 0) {
-    start = 7;
-  }
 
   const daysInMonth =
     new Date(
@@ -799,331 +1167,360 @@ function renderCalendar() {
     ).getDate();
 
 
-  let html = "";
+  const prevDays =
+    (
+      first.getDay() +
+      6
+    ) % 7;
+
+
+  const totalCells =
+    Math.ceil(
+      (
+        prevDays +
+        daysInMonth
+      ) / 7
+    ) * 7;
+
+
+  grid.innerHTML =
+    "";
 
 
   for (
-    let i = 1;
-    i < start;
+    let i = 0;
+    i < totalCells;
     i++
   ) {
 
-    html += `
-      <div class="calendar-day empty"></div>
-    `;
-
-  }
-
-
-  const today =
-    toISO(new Date());
+    const day =
+      i -
+      prevDays +
+      1;
 
 
-  for (
-    let day = 1;
-    day <= daysInMonth;
-    day++
-  ) {
-
-    const date =
-      `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-    const dayPubs =
-      getPublicationsForDate(date);
-
-    const color =
-      dayStyles[date] || "";
+    const cell =
+      document.createElement(
+        "div"
+      );
 
 
-    let chips = "";
-
-    dayPubs
-      .slice(0, 4)
-      .forEach(pub => {
-
-        const platformClass =
-          publicationPlatformClass(
-            pub.platform
-          );
-
-        chips += `
-          <button
-            type="button"
-            class="publication-chip platform-${platformClass}"
-            data-publication-id="${pub.id}"
-          >
-            <span>
-              ${escapeHtml(pub.platform)}
-            </span>
-
-            <strong>
-              ${escapeHtml(pub.title)}
-            </strong>
-          </button>
-        `;
-
-      });
+    cell.className =
+      "calendar-cell";
 
 
-    if (dayPubs.length > 4) {
+    let date;
 
-      chips += `
-        <div class="more-chip">
-          +${dayPubs.length - 4}
-        </div>
-      `;
+    let shownDay;
+
+
+    if (day < 1) {
+
+      const d =
+        new Date(
+          year,
+          month,
+          day
+        );
+
+
+      date =
+        toISO(d);
+
+
+      shownDay =
+        d.getDate();
+
+
+      cell.classList.add(
+        "muted"
+      );
+
+    } else if (
+      day > daysInMonth
+    ) {
+
+      const d =
+        new Date(
+          year,
+          month,
+          day
+        );
+
+
+      date =
+        toISO(d);
+
+
+      shownDay =
+        d.getDate();
+
+
+      cell.classList.add(
+        "muted"
+      );
+
+    } else {
+
+      date =
+        `${year}-${pad(
+          month + 1
+        )}-${pad(day)}`;
+
+
+      shownDay =
+        day;
 
     }
 
 
-    html += `
+    const color =
+      dayColorValue(
+        date
+      );
+
+
+    if (
+      color !== "white"
+    ) {
+
+      cell.classList.add(
+        `day-color-${color}`
+      );
+
+    }
+
+
+    cell.dataset.date =
+      date;
+
+
+    const isToday =
+      date ===
+      isoToday();
+
+
+    cell.innerHTML = `
+
       <div
-        class="calendar-day ${color ? `day-color-${color}` : ""} ${date === today ? "today" : ""}"
-        data-date="${date}"
+        class="day-number ${
+          isToday
+            ? "today"
+            : ""
+        }"
       >
-
-        <button
-          type="button"
-          class="day-number"
-          data-day-date="${date}"
-        >
-          ${day}
-        </button>
-
-        <button
-          type="button"
-          class="day-palette-trigger"
-          data-palette-date="${date}"
-          aria-label="Цвет дня"
-        >
-          •••
-        </button>
-
-        <div class="publication-chips">
-          ${chips}
-        </div>
-
+        ${shownDay}
       </div>
+
+      <button
+        class="day-palette-trigger"
+        type="button"
+        aria-label="Цвет ячейки"
+        title="Цвет ячейки"
+      >
+        •
+      </button>
+
     `;
 
-  }
 
-
-  grid.innerHTML =
-    html;
-
-
-  grid
-    .querySelectorAll(
-      ".calendar-day:not(.empty)"
-    )
-    .forEach(cell => {
-
-      cell.addEventListener(
-        "click",
-        event => {
-
-          if (
-            event.target.closest(
-              ".publication-chip"
-            )
-          ) {
-            return;
-          }
-
-          if (
-            event.target.closest(
-              ".day-palette-trigger"
-            )
-          ) {
-            return;
-          }
-
-          const date =
-            cell.dataset.date;
-
-          openDayEditor(date);
-
-        }
-      );
-
-    });
-
-
-  grid
-    .querySelectorAll(
-      ".publication-chip"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        event => {
-
-          event.stopPropagation();
-
-          openPublication(
-            button.dataset.publicationId
-          );
-
-        }
-      );
-
-    });
-
-
-  grid
-    .querySelectorAll(
-      ".day-palette-trigger"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        event => {
-
-          event.stopPropagation();
-
-          showDayPalette(
-            button.dataset.paletteDate,
-            button
-          );
-
-        }
-      );
-
-    });
-
-}
-
-
-function openDayEditor(date) {
-
-  const dayPubs =
-    getPublicationsForDate(date);
-
-  if (dayPubs.length) {
-
-    const first =
-      dayPubs[0];
-
-    openModal(
-      first.content_id,
-      date
-    );
-
-    return;
-  }
-
-
-  openModal(
-    null,
-    date
-  );
-
-}
-
-
-function showDayPalette(
-  date,
-  anchor
-) {
-
-  document
-    .querySelectorAll(
-      ".day-palette"
-    )
-    .forEach(el => el.remove());
-
-
-  const palette =
-    document.createElement("div");
-
-  palette.className =
-    "day-palette";
-
-
-  palette.innerHTML = `
-
-    <button
-      class="palette-white"
-      data-color=""
-      aria-label="Белый"
-    ></button>
-
-    <button
-      class="palette-yellow"
-      data-color="yellow"
-      aria-label="Жёлтый"
-    ></button>
-
-    <button
-      class="palette-purple"
-      data-color="purple"
-      aria-label="Фиолетовый"
-    ></button>
-
-    <button
-      class="palette-green"
-      data-color="green"
-      aria-label="Зелёный"
-    ></button>
-
-  `;
-
-
-  anchor.parentElement.appendChild(
-    palette
-  );
-
-
-  palette
-    .querySelectorAll("button")
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        async event => {
-
-          event.stopPropagation();
-
-          await saveDayColor(
-            date,
-            button.dataset.color
-          );
-
-          palette.remove();
-
-        }
-      );
-
-    });
-
-
-  setTimeout(() => {
-
-    document.addEventListener(
+    cell.addEventListener(
       "click",
-      function closePalette(event) {
+      e => {
 
         if (
-          !palette.contains(event.target) &&
-          event.target !== anchor
+          e.target.closest(
+            "button"
+          )
         ) {
-
-          palette.remove();
-
-          document.removeEventListener(
-            "click",
-            closePalette
-          );
-
+          return;
         }
+
+
+        openDayEditor(
+          date
+        );
 
       }
     );
 
-  }, 0);
+
+    cell
+      .querySelector(
+        ".day-palette-trigger"
+      )
+      .addEventListener(
+        "click",
+        e => {
+
+          e.stopPropagation();
+
+          showDayPalette(
+            cell,
+            date
+          );
+
+        }
+      );
+
+
+    const dayPubs =
+      publications
+        .filter(
+          p =>
+            p.publication_date ===
+            date
+        )
+        .sort(
+          sortPublication
+        );
+
+
+    dayPubs
+      .slice(
+        0,
+        4
+      )
+      .forEach(
+        p => {
+
+          const chip =
+            document.createElement(
+              "button"
+            );
+
+
+          chip.type =
+            "button";
+
+
+          chip.className =
+            `pub-chip ${
+              platformClass(
+                p.platform
+              )
+            } ${
+              p.status === "done"
+                ? "done"
+                : ""
+            }`;
+
+
+          chip.innerHTML = `
+
+            <span class="pub-time">
+              ${
+                p.publication_time
+                  ? esc(
+                      p.publication_time
+                        .slice(0, 5)
+                    )
+                  : ""
+              }
+            </span>
+
+            ${esc(p.platform)}
+            ·
+            ${esc(p.title)}
+
+          `;
+
+
+          chip.addEventListener(
+            "click",
+            e => {
+
+              e.stopPropagation();
+
+              openModal(
+                p.content_id
+              );
+
+            }
+          );
+
+
+          cell.appendChild(
+            chip
+          );
+
+        }
+      );
+
+
+    if (
+      dayPubs.length > 4
+    ) {
+
+      const more =
+        document.createElement(
+          "div"
+        );
+
+
+      more.className =
+        "calendar-more";
+
+
+      more.textContent =
+        `+ ещё ${
+          dayPubs.length - 4
+        }`;
+
+
+      cell.appendChild(
+        more
+      );
+
+    }
+
+
+    grid.appendChild(
+      cell
+    );
+
+  }
+
+}
+
+
+function toISO(
+  date
+) {
+
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() + 1
+  )}-${pad(
+    date.getDate()
+  )}`;
+
+}
+
+
+/* =========================================================
+   ASSIGNEES
+========================================================= */
+
+function publicationAssignees(
+  pubId
+) {
+
+  return assigneeRows
+    .filter(
+      x =>
+        x.publication_id ===
+        pubId
+    )
+    .map(
+      x =>
+        members.find(
+          m =>
+            m.id ===
+            x.user_id
+        )
+    )
+    .filter(Boolean);
+
 }
 
 
@@ -1133,324 +1530,323 @@ function showDayPalette(
 
 function renderUpcoming() {
 
-  const container =
-    document.getElementById(
-      "upcomingList"
-    );
-
-  if (!container) return;
+  const now =
+    new Date();
 
 
-  const today =
-    toISO(new Date());
-
-
-  const items =
-    publications
-      .filter(
-        p =>
-          p.publication_date >= today &&
-          p.status !== "done"
+  const upcoming =
+    [...publications]
+      .sort(
+        sortPublication
       )
-      .sort((a, b) => {
+      .filter(
+        p => {
 
-        const aKey =
-          `${a.publication_date} ${a.publication_time || ""}`;
+          const dt =
+            p.publication_time
 
-        const bKey =
-          `${b.publication_date} ${b.publication_time || ""}`;
+              ? new Date(
+                  `${p.publication_date}T${p.publication_time}`
+                )
 
-        return aKey.localeCompare(
-          bKey
-        );
-
-      })
-      .slice(0, 8);
+              : new Date(
+                  `${p.publication_date}T23:59:00`
+                );
 
 
-  if (!items.length) {
+          return dt >= now;
 
-    container.innerHTML = `
-      <div class="empty-state">
-        Пока нет ближайших публикаций
+        }
+      )
+      .slice(
+        0,
+        6
+      );
+
+
+  const box =
+    $("upcomingList");
+
+
+  if (
+    !upcoming.length
+  ) {
+
+    box.innerHTML = `
+      <div class="empty">
+        Пока нет запланированных публикаций.
       </div>
     `;
 
     return;
+
   }
 
 
-  container.innerHTML =
-    items
-      .map(pub => {
+  box.innerHTML =
+    upcoming
+      .map(
+        p => {
 
-        return `
-          <button
-            type="button"
-            class="upcoming-card"
-            data-publication-id="${pub.id}"
-          >
+          const names =
+            publicationAssignees(
+              p.id
+            )
+              .map(
+                m =>
+                  m.telegram_first_name ||
+                  m.telegram_username
+              )
+              .slice(
+                0,
+                3
+              )
+              .join(
+                ", "
+              );
 
-            <div class="upcoming-date">
 
-              <strong>
-                ${new Date(
-                  `${pub.publication_date}T00:00:00`
-                ).getDate()}
-              </strong>
+          return `
 
-              <span>
-                ${new Date(
-                  `${pub.publication_date}T00:00:00`
-                ).toLocaleDateString(
-                  "ru-RU",
-                  { month: "short" }
-                )}
+            <button
+              class="upcoming-card"
+              data-pub="${p.id}"
+              type="button"
+            >
+
+              <div class="date-box">
+
+                <strong>
+                  ${p.publication_date.slice(8)}
+                </strong>
+
+                <span>
+                  ${
+                    shortMonths[
+                      Number(
+                        p.publication_date.slice(
+                          5,
+                          7
+                        )
+                      ) - 1
+                    ]
+                  }
+                </span>
+
+              </div>
+
+
+              <div class="upcoming-main">
+
+                <div class="upcoming-title">
+                  ${esc(p.title)}
+                </div>
+
+                <div class="upcoming-meta">
+
+                  ${esc(p.platform)}
+                  ·
+                  ${esc(p.format)}
+
+                  ${
+                    p.publication_time
+                      ? " · " +
+                        esc(
+                          p.publication_time
+                            .slice(0, 5)
+                        )
+                      : ""
+                  }
+
+                  ${
+                    names
+                      ? " · " +
+                        esc(names)
+                      : ""
+                  }
+
+                </div>
+
+              </div>
+
+
+              <span class="chevron">
+                ›
               </span>
 
-            </div>
+            </button>
 
+          `;
 
-            <div class="upcoming-main">
-
-              <div class="upcoming-title">
-                ${escapeHtml(pub.title)}
-              </div>
-
-              <div class="upcoming-meta">
-                ${escapeHtml(pub.platform)}
-                ·
-                ${escapeHtml(pub.format)}
-                ${pub.publication_time ? ` · ${pub.publication_time}` : ""}
-              </div>
-
-            </div>
-
-            <div class="upcoming-arrow">
-              ›
-            </div>
-
-          </button>
-        `;
-
-      })
+        }
+      )
       .join("");
 
 
-  container
+  box
     .querySelectorAll(
-      "[data-publication-id]"
+      "[data-pub]"
     )
-    .forEach(button => {
+    .forEach(
+      b => {
 
-      button.addEventListener(
-        "click",
-        () => {
+        b.onclick =
+          () => {
 
-          openPublication(
-            button.dataset.publicationId
-          );
+            const p =
+              publications.find(
+                x =>
+                  x.id ===
+                  b.dataset.pub
+              );
 
-        }
-      );
 
-    });
+            if (p) {
+
+              openModal(
+                p.content_id
+              );
+
+            }
+
+          };
+
+      }
+    );
 
 }
 
 
 /* =========================================================
-   CONTENT LIST
+   CONTENT
 ========================================================= */
 
 function renderContent() {
 
-  const container =
-    document.getElementById(
-      "contentList"
-    );
-
-  if (!container) return;
+  const box =
+    $("contentList");
 
 
   if (!contents.length) {
 
-    container.innerHTML = `
-      <div class="empty-state">
+    box.innerHTML = `
+
+      <div class="empty">
+
         Контента пока нет.
-        Нажми «+ Контент», чтобы создать первый.
+        Нажми «+ Контент», чтобы добавить.
+
       </div>
+
     `;
 
     return;
+
   }
 
 
-  container.innerHTML =
+  box.innerHTML =
     contents
-      .map(content => {
+      .map(
+        c => {
 
-        const pubs =
-          publications
-            .filter(
-              p =>
-                p.content_id === content.id
-            )
-            .sort((a, b) => {
-
-              const aKey =
-                `${a.publication_date} ${a.publication_time || ""}`;
-
-              const bKey =
-                `${b.publication_date} ${b.publication_time || ""}`;
-
-              return aKey.localeCompare(
-                bKey
+          const pubs =
+            publications
+              .filter(
+                p =>
+                  p.content_id ===
+                  c.id
+              )
+              .sort(
+                sortPublication
               );
 
-            });
+
+          return `
+
+            <button
+              class="content-card"
+              data-content="${c.id}"
+              type="button"
+            >
+
+              <div class="content-main">
+
+                <div class="content-title">
+                  ${esc(c.title)}
+                </div>
+
+                <div class="content-meta">
+
+                  ${pubs.length}
+
+                  ${
+                    plural(
+                      pubs.length,
+                      "публикация",
+                      "публикации",
+                      "публикаций"
+                    )
+                  }
+
+                  ${
+                    c.description
+                      ? " · " +
+                        esc(
+                          c.description
+                        )
+                      : ""
+                  }
+
+                </div>
+
+              </div>
 
 
-        return `
-          <article
-            class="content-card"
-            data-content-id="${content.id}"
-          >
-
-            <div class="content-card-head">
-
-              <div>
-
-                <h3>
-                  ${escapeHtml(content.title)}
-                </h3>
+              <div class="content-right">
 
                 ${
-                  content.description
-                    ? `
-                      <p class="content-card-description">
-                        ${escapeHtml(
-                          content.description
-                        )}
-                      </p>
-                    `
-                    : ""
+                  pubs
+                    .slice(0, 4)
+                    .map(
+                      p =>
+                        `
+                          <span class="mini-chip">
+                            ${esc(p.platform)}
+                            ·
+                            ${esc(p.format)}
+                          </span>
+                        `
+                    )
+                    .join("")
                 }
 
               </div>
 
-              <button
-                type="button"
-                class="secondary-btn edit-content-btn"
-              >
-                Изменить
-              </button>
+            </button>
 
-            </div>
+          `;
 
-
-            <div class="content-publications">
-
-              ${
-                pubs.length
-                  ? pubs.map(pub => {
-
-                      return `
-                        <button
-                          type="button"
-                          class="content-publication-row"
-                          data-publication-id="${pub.id}"
-                        >
-
-                          <span class="pub-meta">
-                            ${formatShortDate(
-                              pub.publication_date
-                            )}
-                          </span>
-
-                          <span class="pub-meta">
-                            ${escapeHtml(
-                              pub.platform
-                            )}
-                          </span>
-
-                          <span class="pub-title">
-                            ${escapeHtml(
-                              pub.title
-                            )}
-                          </span>
-
-                          <span class="pub-meta">
-                            ${escapeHtml(
-                              pub.format
-                            )}
-                          </span>
-
-                        </button>
-                      `;
-
-                    }).join("")
-                  : `
-                    <div class="empty-state">
-                      Нет публикаций
-                    </div>
-                  `
-              }
-
-            </div>
-
-          </article>
-        `;
-
-      })
+        }
+      )
       .join("");
 
 
-  container
+  box
     .querySelectorAll(
-      ".edit-content-btn"
+      "[data-content]"
     )
-    .forEach(button => {
+    .forEach(
+      b => {
 
-      button.addEventListener(
-        "click",
-        event => {
-
-          event.stopPropagation();
-
-          const card =
-            button.closest(
-              "[data-content-id]"
+        b.onclick =
+          () =>
+            openModal(
+              b.dataset.content
             );
 
-          openModal(
-            card.dataset.contentId
-          );
-
-        }
-      );
-
-    });
-
-
-  container
-    .querySelectorAll(
-      "[data-publication-id]"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          openPublication(
-            button.dataset.publicationId
-          );
-
-        }
-      );
-
-    });
+      }
+    );
 
 }
 
@@ -1461,82 +1857,80 @@ function renderContent() {
 
 function renderTeam() {
 
-  const container =
-    document.getElementById(
-      "teamList"
-    );
-
-  const count =
-    document.getElementById(
-      "teamCount"
-    );
-
-  if (!container) return;
+  const box =
+    $("teamList");
 
 
-  if (count) {
-
-    count.textContent =
-      `${members.length} ${
-        members.length === 1
-          ? "участник"
-          : "участников"
-      }`;
-
-  }
+  $("teamCount").textContent =
+    `${members.length} ${
+      plural(
+        members.length,
+        "участник",
+        "участника",
+        "участников"
+      )
+    }`;
 
 
   if (!members.length) {
 
-    container.innerHTML = `
-      <div class="empty-state">
-        Пока никто не подключился
+    box.innerHTML = `
+
+      <div class="empty">
+
+        Участники появятся здесь
+        после входа через Telegram.
+
       </div>
+
     `;
 
     return;
+
   }
 
 
-  container.innerHTML =
+  box.innerHTML =
     members
-      .map(member => {
+      .map(
+        m => `
 
-        return `
-          <article class="team-card">
+          <div class="team-card">
 
-            <div class="avatar">
-              ${escapeHtml(
-                initials(member)
-              )}
-            </div>
+            ${avatarHtml(m)}
 
             <div>
 
               <div class="team-name">
-                ${escapeHtml(
-                  memberName(member)
-                )}
+
+                ${
+                  esc(
+                    m.telegram_first_name ||
+                    "Без имени"
+                  )
+                }
+
               </div>
 
-              ${
-                member.username
-                  ? `
-                    <div class="team-username">
-                      @${escapeHtml(
-                        member.username
-                      )}
-                    </div>
-                  `
-                  : ""
-              }
+              <div class="team-handle">
+
+                ${
+                  m.telegram_username
+                    ? "@" +
+                      esc(
+                        m.telegram_username
+                      )
+                    : "Telegram"
+                }
+
+              </div>
 
             </div>
 
-          </article>
-        `;
+          </div>
 
-      })
+        `
+      )
       .join("");
 
 }
@@ -1548,299 +1942,446 @@ function renderTeam() {
 
 function renderAnalytics() {
 
-  const filtered =
-    getAnalyticsPublications();
+  const list =
+    analyticsPeriod();
 
 
-  const total =
-    filtered.length;
+  $("statTotal").textContent =
+    list.length;
 
 
-  const totalElement =
-    document.getElementById(
-      "statTotal"
-    );
+  const days =
+    activePeriod === "week"
+      ? 7
 
-  const weekElement =
-    document.getElementById(
-      "statWeek"
-    );
+      : activePeriod === "month"
+        ? 30
 
+        : activePeriod === "3months"
+          ? 90
 
-  if (totalElement) {
-    totalElement.textContent =
-      total;
-  }
-
-
-  if (weekElement) {
-
-    const days =
-      analyticsPeriod === "week"
-        ? 7
-        : analyticsPeriod === "month"
-          ? 30
-          : analyticsPeriod === "3months"
-            ? 90
-            : 365;
+          : Math.max(
+              1,
+              daysBetween(
+                minDate(list),
+                maxDate(list)
+              ) + 1
+            );
 
 
-    const average =
-      days
-        ? total / (days / 7)
-        : 0;
+  $("statWeek").textContent =
+    (
+      (list.length / days) *
+      7
+    ).toFixed(1);
 
 
-    weekElement.textContent =
-      average.toFixed(1);
-
-  }
-
-
-  renderStatList(
+  renderBars(
     "platformStats",
     countBy(
-      filtered,
+      list,
       "platform"
     )
   );
 
 
-  renderStatList(
+  renderBars(
     "formatStats",
     countBy(
-      filtered,
+      list,
       "format"
     )
   );
 
 
-  const weekdayMap = {
-    "Пн": 0,
-    "Вт": 0,
-    "Ср": 0,
-    "Чт": 0,
-    "Пт": 0,
-    "Сб": 0,
-    "Вс": 0
-  };
+  const weekdays = {};
 
 
-  filtered.forEach(pub => {
+  list.forEach(
+    p => {
 
-    const date =
-      new Date(
-        `${pub.publication_date}T00:00:00`
-      );
-
-    let day =
-      date.getDay();
-
-    day =
-      day === 0
-        ? 6
-        : day - 1;
-
-    const names =
-      [
-        "Пн",
-        "Вт",
-        "Ср",
-        "Чт",
-        "Пт",
-        "Сб",
-        "Вс"
-      ];
-
-    weekdayMap[names[day]]++;
-
-  });
+      const d =
+        new Date(
+          `${p.publication_date}T12:00:00`
+        );
 
 
-  renderStatList(
-    "weekdayStats",
-    weekdayMap
+      const key =
+        [
+          "Вс",
+          "Пн",
+          "Вт",
+          "Ср",
+          "Чт",
+          "Пт",
+          "Сб"
+        ][
+          d.getDay()
+        ];
+
+
+      weekdays[key] =
+        (
+          weekdays[key] ||
+          0
+        ) + 1;
+
+    }
   );
 
 
-  const assigneeMap = {};
+  renderBars(
+    "weekdayStats",
+    weekdays
+  );
 
 
-  filtered.forEach(pub => {
-
-    getAssigneeIds(
-      pub.id
-    ).forEach(userId => {
-
-      const member =
-        getMember(userId);
-
-      if (!member) return;
-
-      const name =
-        memberName(member);
-
-      assigneeMap[name] =
-        (assigneeMap[name] || 0) + 1;
-
-    });
-
-  });
+  const workload = {};
 
 
-  renderStatList(
+  list.forEach(
+    p => {
+
+      publicationAssignees(
+        p.id
+      ).forEach(
+        m => {
+
+          const key =
+            m.telegram_first_name ||
+            m.telegram_username ||
+            "Участник";
+
+
+          workload[key] =
+            (
+              workload[key] ||
+              0
+            ) + 1;
+
+        }
+      );
+
+    }
+  );
+
+
+  renderBars(
     "assigneeStats",
-    assigneeMap
+    workload
   );
 
 }
 
 
-function getAnalyticsPublications() {
-
-  if (
-    analyticsPeriod === "all"
-  ) {
-    return [...publications];
-  }
-
+function analyticsPeriod() {
 
   const now =
     new Date();
 
-  const days =
-    analyticsPeriod === "week"
-      ? 7
-      : analyticsPeriod === "month"
-        ? 30
-        : 90;
+
+  let from =
+    null;
 
 
-  const from =
-    new Date(now);
+  if (
+    activePeriod === "week"
+  ) {
 
-  from.setDate(
-    from.getDate() - days
-  );
+    from =
+      new Date(
+        now.getTime() -
+        6 * 86400000
+      );
+
+  }
+
+
+  if (
+    activePeriod === "month"
+  ) {
+
+    from =
+      new Date(
+        now.getTime() -
+        29 * 86400000
+      );
+
+  }
+
+
+  if (
+    activePeriod === "3months"
+  ) {
+
+    from =
+      new Date(
+        now.getTime() -
+        89 * 86400000
+      );
+
+  }
+
+
+  const platform =
+    $("analyticsPlatform")?.value ||
+    "all";
 
 
   return publications.filter(
-    pub => {
+    p => {
 
-      const date =
+      const d =
         new Date(
-          `${pub.publication_date}T00:00:00`
+          `${p.publication_date}T12:00:00`
         );
 
-      return date >= from;
+
+      const inPeriod =
+        !from ||
+        d >= from;
+
+
+      const inPlatform =
+        platform === "all" ||
+        p.platform === platform;
+
+
+      return (
+        inPeriod &&
+        inPlatform
+      );
 
     }
   );
+
 }
 
 
 function countBy(
-  rows,
+  list,
   key
 ) {
 
-  const result = {};
+  return list.reduce(
+    (a, p) => {
 
-  rows.forEach(row => {
+      a[p[key]] =
+        (
+          a[p[key]] ||
+          0
+        ) + 1;
 
-    const value =
-      row[key] || "Не указано";
 
-    result[value] =
-      (result[value] || 0) + 1;
+      return a;
 
-  });
+    },
+    {}
+  );
 
-  return result;
 }
 
 
-function renderStatList(
-  elementId,
-  values
+function renderBars(
+  id,
+  obj
 ) {
 
-  const container =
-    document.getElementById(
-      elementId
-    );
-
-  if (!container) return;
+  const box =
+    $(id);
 
 
   const entries =
-    Object.entries(values)
-      .sort(
-        (a, b) =>
-          b[1] - a[1]
-      );
-
-
-  if (!entries.length) {
-
-    container.innerHTML = `
-      <div class="empty-state">
-        Нет данных
-      </div>
-    `;
-
-    return;
-  }
-
-
-  const max =
-    Math.max(
-      ...entries.map(
-        item => item[1]
-      )
+    Object.entries(
+      obj
+    ).sort(
+      (a, b) =>
+        b[1] -
+        a[1]
     );
 
 
-  container.innerHTML =
-    entries
-      .map(
-        ([name, value]) => {
+  const max =
+    entries[0]?.[1] ||
+    1;
 
-          const width =
-            max
-              ? (value / max) * 100
-              : 0;
 
-          return `
-            <div class="stat-row">
+  box.innerHTML =
+    entries.length
 
-              <div class="stat-row-top">
+      ? `
 
-                <span>
-                  ${escapeHtml(name)}
-                </span>
+        <div class="bars">
 
-                <strong>
-                  ${value}
-                </strong>
+          ${
+            entries
+              .map(
+                ([name, n]) => `
 
-              </div>
+                  <div class="bar-row">
 
-              <div class="stat-bar">
+                    <span>
+                      ${esc(name)}
+                    </span>
 
-                <div
-                  class="stat-bar-fill"
-                  style="width:${width}%"
-                ></div>
+                    <div class="bar-track">
 
-              </div>
+                      <div
+                        class="bar-fill"
+                        style="width:${Math.max(
+                          4,
+                          n / max * 100
+                        )}%"
+                      ></div>
 
-            </div>
-          `;
+                    </div>
 
-        }
+                    <strong>
+                      ${n}
+                    </strong>
+
+                  </div>
+
+                `
+              )
+              .join("")
+          }
+
+        </div>
+
+      `
+
+      : `
+
+        <div
+          class="empty"
+          style="padding:18px;margin-top:12px"
+        >
+          Нет данных
+        </div>
+
+      `;
+
+}
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function sortPublication(
+  a,
+  b
+) {
+
+  const aa =
+    `${a.publication_date}T${
+      a.publication_time ||
+      "23:59:59"
+    }`;
+
+
+  const bb =
+    `${b.publication_date}T${
+      b.publication_time ||
+      "23:59:59"
+    }`;
+
+
+  return aa.localeCompare(
+    bb
+  );
+
+}
+
+
+function minDate(
+  list
+) {
+
+  return list.length
+
+    ? list.reduce(
+        (a, p) =>
+          a < p.publication_date
+            ? a
+            : p.publication_date,
+        list[0].publication_date
       )
-      .join("");
+
+    : isoToday();
+
+}
+
+
+function maxDate(
+  list
+) {
+
+  return list.length
+
+    ? list.reduce(
+        (a, p) =>
+          a > p.publication_date
+            ? a
+            : p.publication_date,
+        list[0].publication_date
+      )
+
+    : isoToday();
+
+}
+
+
+function daysBetween(
+  a,
+  b
+) {
+
+  return Math.round(
+    (
+      new Date(b) -
+      new Date(a)
+    ) / 86400000
+  );
+
+}
+
+
+function plural(
+  n,
+  a,
+  b,
+  c
+) {
+
+  const m =
+    n % 10;
+
+
+  const t =
+    n % 100;
+
+
+  return (
+    m === 1 &&
+    t !== 11
+  )
+
+    ? a
+
+    : (
+        m >= 2 &&
+        m <= 4 &&
+        (
+          t < 12 ||
+          t > 14
+        )
+      )
+
+      ? b
+
+      : c;
 
 }
 
@@ -1854,127 +2395,89 @@ function openModal(
   presetDate = null
 ) {
 
-  editingContentId =
-    contentId;
-
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-  const title =
-    document.getElementById(
-      "modalTitle"
-    );
-
-  const contentTitle =
-    document.getElementById(
-      "contentTitle"
-    );
-
-  const contentDescription =
-    document.getElementById(
-      "contentDescription"
-    );
-
-  const contentIdInput =
-    document.getElementById(
-      "editingContentId"
-    );
-
-  const editorList =
-    document.getElementById(
-      "publicationEditorList"
-    );
-
-  const deleteButton =
-    document.getElementById(
-      "deleteContentBtn"
+  $("modal")
+    .classList
+    .remove(
+      "hidden"
     );
 
 
-  editorList.innerHTML =
+  $("editingContentId")
+    .value =
+    contentId ||
+    "";
+
+
+  $("modalTitle")
+    .textContent =
+    contentId
+      ? "Редактировать контент"
+      : "Новый контент";
+
+
+  $("deleteContentBtn")
+    .classList
+    .toggle(
+      "hidden",
+      !contentId
+    );
+
+
+  $("contentTitle")
+    .value =
+    "";
+
+
+  $("contentDescription")
+    .value =
+    "";
+
+
+  $("publicationEditorList")
+    .innerHTML =
     "";
 
 
   if (contentId) {
 
-    const content =
-      getContent(contentId);
-
-    if (!content) return;
-
-
-    title.textContent =
-      "Редактировать контент";
-
-
-    contentTitle.value =
-      content.title || "";
-
-
-    contentDescription.value =
-      content.description || "";
-
-
-    contentIdInput.value =
-      content.id;
-
-
-    deleteButton.classList.remove(
-      "hidden"
-    );
-
-
-    const pubs =
-      publications.filter(
-        p =>
-          p.content_id === content.id
+    const c =
+      contents.find(
+        x =>
+          x.id ===
+          contentId
       );
 
 
-    if (pubs.length) {
+    if (c) {
 
-      pubs.forEach(pub => {
+      $("contentTitle")
+        .value =
+        c.title ||
+        "";
 
-        addPublicationEditor(
-          pub
-        );
 
-      });
-
-    } else {
-
-      addPublicationEditor(
-        null,
-        presetDate
-      );
+      $("contentDescription")
+        .value =
+        c.description ||
+        "";
 
     }
 
+
+    publications
+      .filter(
+        p =>
+          p.content_id ===
+          contentId
+      )
+      .sort(
+        sortPublication
+      )
+      .forEach(
+        addPublicationEditor
+      );
+
   } else {
-
-    title.textContent =
-      "Новый контент";
-
-
-    contentTitle.value =
-      "";
-
-
-    contentDescription.value =
-      "";
-
-
-    contentIdInput.value =
-      "";
-
-
-    deleteButton.classList.add(
-      "hidden"
-    );
-
 
     addPublicationEditor(
       null,
@@ -1983,50 +2486,17 @@ function openModal(
 
   }
 
-
-  modal.classList.remove(
-    "hidden"
-  );
-
-  document.body.style.overflow =
-    "hidden";
 }
 
 
 function closeModal() {
 
-  const modal =
-    document.getElementById(
-      "modal"
+  $("modal")
+    .classList
+    .add(
+      "hidden"
     );
 
-  modal?.classList.add(
-    "hidden"
-  );
-
-  document.body.style.overflow =
-    "";
-
-  editingContentId =
-    null;
-}
-
-
-function openPublication(
-  publicationId
-) {
-
-  const publication =
-    publications.find(
-      p => p.id === publicationId
-    );
-
-  if (!publication) return;
-
-  openModal(
-    publication.content_id,
-    publication.publication_date
-  );
 }
 
 
@@ -2039,410 +2509,410 @@ function addPublicationEditor(
   presetDate = null
 ) {
 
-  const template =
-    document.getElementById(
-      "publicationTemplate"
-    );
-
-  const list =
-    document.getElementById(
-      "publicationEditorList"
-    );
+  const tpl =
+    $("publicationTemplate");
 
 
   const node =
-    template.content
+    tpl.content
       .firstElementChild
-      .cloneNode(true);
-
-
-  const publicationId =
-    data?.id || "";
-
-
-  node.dataset.id =
-    publicationId;
-
-
-  node.querySelector(
-    '[data-field="title"]'
-  ).value =
-    data?.title || "";
-
-
-  node.querySelector(
-    '[data-field="platform"]'
-  ).value =
-    data?.platform || "Telegram";
-
-
-  node.querySelector(
-    '[data-field="format"]'
-  ).value =
-    data?.format || "Пост";
-
-
-  node.querySelector(
-    '[data-field="date"]'
-  ).value =
-    data?.publication_date ||
-    presetDate ||
-    toISO(new Date());
-
-
-  node.querySelector(
-    '[data-field="time"]'
-  ).value =
-    data?.publication_time || "";
-
-
-  node.querySelector(
-    '[data-field="status"]'
-  ).value =
-    data?.status || "planned";
-
-
-  node.querySelector(
-    '[data-field="link"]'
-  ).value =
-    data?.link || "";
-
-
-  node.querySelector(
-    '[data-field="description"]'
-  ).value =
-    data?.description || "";
-
-
-  node.querySelector(
-    '[data-reminder="24h"]'
-  ).checked =
-    data?.reminder_24h ?? true;
-
-
-  node.querySelector(
-    '[data-reminder="3h"]'
-  ).checked =
-    data?.reminder_3h ?? false;
-
-
-  node.querySelector(
-    '[data-reminder="1h"]'
-  ).checked =
-    data?.reminder_1h ?? false;
-
-
-  renderAssigneePicker(
-    node,
-    data?.id
-      ? getAssigneeIds(data.id)
-      : []
-  );
-
-
-  node.querySelector(
-    ".remove-publication"
-  ).addEventListener(
-    "click",
-    () => {
-
-      node.remove();
-
-      updatePublicationNumbers();
-
-    }
-  );
-
-
-  list.appendChild(
-    node
-  );
-
-
-  const search =
-    node.querySelector(
-      "[data-search]"
-    );
-
-
-  search.addEventListener(
-    "input",
-    () => {
-
-      renderAssigneePicker(
-        node,
-        getSelectedAssignees(node)
+      .cloneNode(
+        true
       );
 
+
+  node.dataset.existingId =
+    data?.id ||
+    "";
+
+
+  const fields =
+    node.querySelectorAll(
+      "[data-field]"
+    );
+
+
+  const values = {
+
+    title:
+      "",
+
+    platform:
+      "Telegram",
+
+    format:
+      "Пост",
+
+    date:
+      presetDate ||
+      isoToday(),
+
+    time:
+      "",
+
+    status:
+      "planned",
+
+    link:
+      "",
+
+    description:
+      ""
+
+  };
+
+
+  fields.forEach(
+    el => {
+
+      el.value =
+        data?.[
+          el.dataset.field
+        ] ??
+        values[
+          el.dataset.field
+        ];
+
     }
   );
 
 
-  updatePublicationNumbers();
-}
-
-
-function updatePublicationNumbers() {
-
-  document
-    .querySelectorAll(
-      "#publicationEditorList [data-publication]"
+  node
+    .querySelector(
+      '[data-reminder="24h"]'
     )
-    .forEach(
-      (node, index) => {
-
-        node.querySelector(
-          ".pub-number"
-        ).textContent =
-          `Публикация ${index + 1}`;
-
-      }
-    );
-
-}
+    .checked =
+    data
+      ? !!data.reminder_24h
+      : true;
 
 
-/* =========================================================
-   ASSIGNEES
-========================================================= */
-
-function renderAssigneePicker(
-  node,
-  selectedIds
-) {
-
-  const selectedContainer =
-    node.querySelector(
-      "[data-selected]"
-    );
-
-  const optionsContainer =
-    node.querySelector(
-      "[data-options]"
-    );
-
-  const searchInput =
-    node.querySelector(
-      "[data-search]"
-    );
-
-
-  const search =
-    (
-      searchInput?.value ||
-      ""
+  node
+    .querySelector(
+      '[data-reminder="3h"]'
     )
-      .trim()
-      .toLowerCase();
+    .checked =
+    data
+      ? !!data.reminder_3h
+      : false;
+
+
+  node
+    .querySelector(
+      '[data-reminder="1h"]'
+    )
+    .checked =
+    data
+      ? !!data.reminder_1h
+      : false;
 
 
   const selected =
     new Set(
-      selectedIds || []
+      data
+        ? assigneeRows
+            .filter(
+              x =>
+                x.publication_id ===
+                data.id
+            )
+            .map(
+              x =>
+                x.user_id
+            )
+
+        : []
     );
 
 
-  selectedContainer.innerHTML =
-    [...selected]
-      .map(userId => {
-
-        const member =
-          getMember(userId);
-
-        if (!member) return "";
-
-        return `
-          <span class="assignee-tag">
-
-            ${escapeHtml(
-              memberName(member)
-            )}
-
-            <button
-              type="button"
-              data-remove-assignee="${userId}"
-            >
-              ×
-            </button>
-
-          </span>
-        `;
-
-      })
-      .join("");
+  node._selected =
+    selected;
 
 
-  const filtered =
-    members.filter(
-      member => {
+  const renderPicker =
+    () => {
 
-        const name =
-          memberName(member)
-            .toLowerCase();
+      const search =
+        (
+          node
+            .querySelector(
+              "[data-search]"
+            )
+            .value ||
+          ""
+        )
+          .toLowerCase()
+          .trim();
 
-        const username =
-          String(
-            member.username || ""
-          )
-            .toLowerCase();
 
-        return (
-          !search ||
-          name.includes(search) ||
-          username.includes(search)
+      const opts =
+        node.querySelector(
+          "[data-options]"
         );
 
-      }
+
+      const filtered =
+        members.filter(
+          m =>
+            (
+              m.telegram_first_name ||
+              ""
+            )
+              .toLowerCase()
+              .includes(search)
+
+            ||
+
+            (
+              m.telegram_username ||
+              ""
+            )
+              .toLowerCase()
+              .includes(search)
+        );
+
+
+      opts.innerHTML = `
+
+        <div class="assignee-options">
+
+          ${
+            filtered
+              .map(
+                m => `
+
+                  <label class="assignee-option">
+
+                    <input
+                      type="checkbox"
+                      data-user="${m.id}"
+                      ${
+                        selected.has(
+                          m.id
+                        )
+                          ? "checked"
+                          : ""
+                      }
+                    >
+
+                    <span>
+
+                      ${
+                        esc(
+                          m.telegram_first_name ||
+                          "Без имени"
+                        )
+                      }
+
+                      ${
+                        m.telegram_username
+                          ? " · @" +
+                            esc(
+                              m.telegram_username
+                            )
+                          : ""
+                      }
+
+                    </span>
+
+                  </label>
+
+                `
+              )
+              .join("")
+          }
+
+        </div>
+
+      `;
+
+
+      opts
+        .querySelectorAll(
+          "[data-user]"
+        )
+        .forEach(
+          cb => {
+
+            cb.addEventListener(
+              "change",
+              () => {
+
+                if (
+                  cb.checked
+                ) {
+
+                  selected.add(
+                    cb.dataset.user
+                  );
+
+                } else {
+
+                  selected.delete(
+                    cb.dataset.user
+                  );
+
+                }
+
+
+                renderPicker();
+
+              }
+            );
+
+          }
+        );
+
+
+      const sel =
+        node.querySelector(
+          "[data-selected]"
+        );
+
+
+      sel.innerHTML =
+        [...selected]
+          .map(
+            id =>
+              members.find(
+                m =>
+                  m.id === id
+              )
+          )
+          .filter(Boolean)
+          .map(
+            m => `
+
+              <span class="assignee-tag">
+
+                ${esc(
+                  m.telegram_first_name ||
+                  "Участник"
+                )}
+
+                <button
+                  type="button"
+                  data-remove="${m.id}"
+                >
+                  ×
+                </button>
+
+              </span>
+
+            `
+          )
+          .join("");
+
+
+      sel
+        .querySelectorAll(
+          "[data-remove]"
+        )
+        .forEach(
+          b => {
+
+            b.onclick =
+              () => {
+
+                selected.delete(
+                  b.dataset.remove
+                );
+
+                renderPicker();
+
+              };
+
+          }
+        );
+
+    };
+
+
+  node
+    .querySelector(
+      "[data-search]"
+    )
+    .addEventListener(
+      "input",
+      renderPicker
     );
 
 
-  optionsContainer.innerHTML =
-    filtered
-      .map(member => {
-
-        const checked =
-          selected.has(
-            member.id
-          );
+  renderPicker();
 
 
-        return `
-          <label class="assignee-option">
-
-            <input
-              type="checkbox"
-              data-assignee-id="${member.id}"
-              ${checked ? "checked" : ""}
-            >
-
-            <span>
-              ${escapeHtml(
-                memberName(member)
-              )}
-            </span>
-
-          </label>
-        `;
-
-      })
-      .join("");
-
-
-  selectedContainer
-    .querySelectorAll(
-      "[data-remove-assignee]"
+  node
+    .querySelector(
+      ".remove-publication"
     )
-    .forEach(button => {
+    .onclick =
+    () => {
 
-      button.addEventListener(
-        "click",
-        () => {
+      if (
+        document.querySelectorAll(
+          "[data-publication]"
+        ).length <= 1
+      ) {
 
-          const id =
-            button.dataset
-              .removeAssignee;
+        toast(
+          "Должна остаться хотя бы одна публикация"
+        );
 
+        return;
 
-          const current =
-            getSelectedAssignees(node)
-              .filter(
-                userId =>
-                  userId !== id
-              );
-
-
-          renderAssigneePicker(
-            node,
-            current
-          );
-
-        }
-      );
-
-    });
+      }
 
 
-  optionsContainer
-    .querySelectorAll(
-      "[data-assignee-id]"
-    )
-    .forEach(input => {
+      node.remove();
 
-      input.addEventListener(
-        "change",
-        () => {
+      renumberEditors();
 
-          const current =
-            getSelectedAssignees(node);
+    };
 
 
-          const id =
-            input.dataset
-              .assigneeId;
+  $("publicationEditorList")
+    .appendChild(
+      node
+    );
 
 
-          if (input.checked) {
-
-            if (
-              !current.includes(id)
-            ) {
-              current.push(id);
-            }
-
-          } else {
-
-            const index =
-              current.indexOf(id);
-
-            if (index >= 0) {
-              current.splice(
-                index,
-                1
-              );
-            }
-
-          }
-
-
-          renderAssigneePicker(
-            node,
-            current
-          );
-
-        }
-      );
-
-    });
+  renumberEditors();
 
 }
 
 
-function getSelectedAssignees(
-  node
-) {
+function renumberEditors() {
 
-  return [
-    ...node.querySelectorAll(
-      "[data-assignee-id]:checked"
+  document
+    .querySelectorAll(
+      "[data-publication] .pub-number"
     )
-  ]
-    .map(
-      input =>
-        input.dataset.assigneeId
+    .forEach(
+      (
+        el,
+        i
+      ) => {
+
+        el.textContent =
+          `Публикация ${
+            i + 1
+          }`;
+
+      }
     );
 
 }
 
 
 /* =========================================================
-   SAVE CONTENT
+   SAVE
 ========================================================= */
 
 async function saveContent(
-  event
+  e
 ) {
 
-  event.preventDefault();
+  e.preventDefault();
 
 
   if (!currentProject) {
@@ -2450,96 +2920,59 @@ async function saveContent(
   }
 
 
+  const contentId =
+    $("editingContentId")
+      .value ||
+    null;
+
+
   const title =
-    document
-      .getElementById(
-        "contentTitle"
-      )
-      .value
-      .trim();
-
-
-  const description =
-    document
-      .getElementById(
-        "contentDescription"
-      )
+    $("contentTitle")
       .value
       .trim();
 
 
   if (!title) {
-
-    alert(
-      "Введите название контента"
-    );
-
     return;
   }
 
 
-  const publicationNodes =
-    [
-      ...document.querySelectorAll(
-        "#publicationEditorList [data-publication]"
-      )
-    ];
-
-
-  if (!publicationNodes.length) {
-
-    alert(
-      "Добавь хотя бы одну публикацию"
-    );
-
-    return;
-  }
-
-
-  const contentPayload = {
-
-    project_id:
-      currentProject.id,
-
-    title,
-
-    description:
-      description || null,
-
-    created_by:
-      currentUser.id
-
-  };
-
-
-  let contentId =
-    editingContentId;
+  let savedContent;
 
 
   if (contentId) {
 
     const {
+      data,
       error
     } =
-      await supabase
+      await db
         .from("content")
-        .update({
-          title,
-          description:
-            description || null
-        })
+        .update(
+          {
+            title,
+
+            description:
+              $("contentDescription")
+                .value
+                .trim()
+          }
+        )
         .eq(
           "id",
           contentId
         )
-        .eq(
-          "project_id",
-          currentProject.id
-        );
+        .select()
+        .single();
+
 
     if (error) {
       throw error;
     }
+
+
+    savedContent =
+      data;
 
   } else {
 
@@ -2547,29 +2980,45 @@ async function saveContent(
       data,
       error
     } =
-      await supabase
+      await db
         .from("content")
         .insert(
-          contentPayload
+          {
+            project_id:
+              currentProject.id,
+
+            title,
+
+            description:
+              $("contentDescription")
+                .value
+                .trim(),
+
+            created_by:
+              currentUser.id
+          }
         )
         .select()
         .single();
+
 
     if (error) {
       throw error;
     }
 
-    contentId =
-      data.id;
+
+    savedContent =
+      data;
 
   }
 
 
-  const oldPublications =
-    publications.filter(
-      p =>
-        p.content_id === contentId
-    );
+  const editorNodes =
+    [
+      ...document.querySelectorAll(
+        "[data-publication]"
+      )
+    ];
 
 
   const keptIds =
@@ -2577,60 +3026,52 @@ async function saveContent(
 
 
   for (
-    const node of publicationNodes
+    const node of editorNodes
   ) {
 
-    const id =
-      node.dataset.id || null;
+    const get =
+      f =>
+        node
+          .querySelector(
+            `[data-field="${f}"]`
+          )
+          .value;
 
 
-    const publicationPayload = {
+    const payload = {
 
       content_id:
-        contentId,
+        savedContent.id,
 
       project_id:
         currentProject.id,
 
       title:
-        node.querySelector(
-          '[data-field="title"]'
-        ).value.trim(),
+        get("title").trim(),
 
       platform:
-        node.querySelector(
-          '[data-field="platform"]'
-        ).value,
+        get("platform"),
 
       format:
-        node.querySelector(
-          '[data-field="format"]'
-        ).value,
+        get("format"),
 
       publication_date:
-        node.querySelector(
-          '[data-field="date"]'
-        ).value,
+        get("date"),
 
       publication_time:
-        node.querySelector(
-          '[data-field="time"]'
-        ).value || null,
+        get("time") ||
+        null,
 
       status:
-        node.querySelector(
-          '[data-field="status"]'
-        ).value,
+        get("status"),
 
       link:
-        node.querySelector(
-          '[data-field="link"]'
-        ).value.trim() || null,
+        get("link").trim() ||
+        null,
 
       description:
-        node.querySelector(
-          '[data-field="description"]'
-        ).value.trim() || null,
+        get("description").trim() ||
+        null,
 
       reminder_24h:
         node.querySelector(
@@ -2650,159 +3091,191 @@ async function saveContent(
     };
 
 
-    if (!publicationPayload.title) {
+    if (!payload.title) {
 
-      alert(
+      toast(
         "У каждой публикации должно быть название"
       );
 
-      return;
+      throw new Error(
+        "Пустое название публикации"
+      );
 
     }
 
 
-    let savedPublication;
+    const existingId =
+      node.dataset.existingId;
 
 
-    if (id) {
+    let pub;
 
-      const {
-        data,
+    let error;
+
+
+    if (existingId) {
+
+      ({
+        data: pub,
         error
       } =
-        await supabase
-          .from("publications")
+        await db
+          .from(
+            "publications"
+          )
           .update(
-            publicationPayload
+            payload
           )
           .eq(
             "id",
-            id
+            existingId
           )
           .select()
-          .single();
-
-      if (error) {
-        throw error;
-      }
-
-      savedPublication =
-        data;
-
-      keptIds.push(id);
+          .single());
 
     } else {
 
-      const {
-        data,
+      ({
+        data: pub,
         error
       } =
-        await supabase
-          .from("publications")
+        await db
+          .from(
+            "publications"
+          )
           .insert(
-            publicationPayload
+            payload
           )
           .select()
-          .single();
-
-      if (error) {
-        throw error;
-      }
-
-      savedPublication =
-        data;
-
-      keptIds.push(
-        savedPublication.id
-      );
+          .single());
 
     }
 
-
-    const selectedAssignees =
-      getSelectedAssignees(
-        node
-      );
-
-
-    await supabase
-      .from(
-        "publication_assignees"
-      )
-      .delete()
-      .eq(
-        "publication_id",
-        savedPublication.id
-      );
-
-
-    if (
-      selectedAssignees.length
-    ) {
-
-      const rows =
-        selectedAssignees.map(
-          userId => ({
-            publication_id:
-              savedPublication.id,
-            user_id:
-              userId
-          })
-        );
-
-
-      const {
-        error
-      } =
-        await supabase
-          .from(
-            "publication_assignees"
-          )
-          .insert(rows);
-
-      if (error) {
-        throw error;
-      }
-
-    }
-
-  }
-
-
-  const deletedIds =
-    oldPublications
-      .map(p => p.id)
-      .filter(
-        id =>
-          !keptIds.includes(id)
-      );
-
-
-  if (deletedIds.length) {
-
-    const {
-      error
-    } =
-      await supabase
-        .from("publications")
-        .delete()
-        .in(
-          "id",
-          deletedIds
-        );
 
     if (error) {
       throw error;
     }
 
+
+    keptIds.push(
+      pub.id
+    );
+
+
+    const selected =
+      [
+        ...node._selected
+      ];
+
+
+    const {
+      error: deleteAssigneesError
+    } =
+      await db
+        .from(
+          "publication_assignees"
+        )
+        .delete()
+        .eq(
+          "publication_id",
+          pub.id
+        );
+
+
+    if (deleteAssigneesError) {
+      throw deleteAssigneesError;
+    }
+
+
+    if (selected.length) {
+
+      const rows =
+        selected.map(
+          user_id => ({
+            publication_id:
+              pub.id,
+
+            user_id
+          })
+        );
+
+
+      const {
+        error: ae
+      } =
+        await db
+          .from(
+            "publication_assignees"
+          )
+          .insert(
+            rows
+          );
+
+
+      if (ae) {
+        throw ae;
+      }
+
+    }
+
   }
 
 
-  await loadData();
+  if (contentId) {
+
+    const removed =
+      publications
+        .filter(
+          p =>
+            p.content_id ===
+              contentId &&
+
+            !keptIds.includes(
+              p.id
+            )
+        )
+        .map(
+          p =>
+            p.id
+        );
+
+
+    if (
+      removed.length
+    ) {
+
+      const {
+        error
+      } =
+        await db
+          .from(
+            "publications"
+          )
+          .delete()
+          .in(
+            "id",
+            removed
+          );
+
+
+      if (error) {
+        throw error;
+      }
+
+    }
+
+  }
+
 
   closeModal();
 
-  renderAll();
+  await loadContent();
+
+  renderEverything();
+
+  toast(
+    "Сохранено"
+  );
 
 }
 
@@ -2813,18 +3286,21 @@ async function saveContent(
 
 async function deleteContent() {
 
-  if (!editingContentId) {
+  const id =
+    $("editingContentId")
+      .value;
+
+
+  if (!id) {
     return;
   }
 
 
-  const confirmed =
-    confirm(
-      "Удалить этот контент вместе со всеми публикациями?"
-    );
-
-
-  if (!confirmed) {
+  if (
+    !confirm(
+      "Удалить этот контент и все его публикации?"
+    )
+  ) {
     return;
   }
 
@@ -2832,285 +3308,224 @@ async function deleteContent() {
   const {
     error
   } =
-    await supabase
+    await db
       .from("content")
       .delete()
       .eq(
         "id",
-        editingContentId
-      )
-      .eq(
-        "project_id",
-        currentProject.id
+        id
       );
 
 
   if (error) {
-    alert(
-      "Не удалось удалить контент"
+
+    toast(
+      "Не удалось удалить"
     );
 
-    console.error(error);
+    console.error(
+      error
+    );
 
     return;
+
   }
 
-
-  await loadData();
 
   closeModal();
 
-  renderAll();
+  await loadContent();
+
+  renderEverything();
+
+  toast(
+    "Удалено"
+  );
 
 }
 
 
 /* =========================================================
-   NAVIGATION
+   BUTTONS
 ========================================================= */
 
-function switchView(
-  viewId
-) {
+$("prevMonth")
+  ?.addEventListener(
+    "click",
+    () => {
 
-  document
-    .querySelectorAll(
-      ".view"
-    )
-    .forEach(view => {
-
-      view.classList.toggle(
-        "active",
-        view.id === viewId
-      );
-
-    });
-
-
-  document
-    .querySelectorAll(
-      ".nav-item"
-    )
-    .forEach(button => {
-
-      button.classList.toggle(
-        "active",
-        button.dataset.view === viewId
-      );
-
-    });
-
-
-  if (
-    viewId === "analyticsView"
-  ) {
-    renderAnalytics();
-  }
-
-}
-
-
-/* =========================================================
-   EVENTS
-========================================================= */
-
-function setupEvents() {
-
-  document
-    .querySelectorAll(
-      ".nav-item"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        () => {
-
-          switchView(
-            button.dataset.view
-          );
-
-        }
-      );
-
-    });
-
-
-  document
-    .getElementById(
-      "prevMonth"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
-
-        currentMonth =
-          new Date(
-            currentMonth.getFullYear(),
-            currentMonth.getMonth() - 1,
-            1
-          );
-
-        renderCalendar();
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "nextMonth"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
-
-        currentMonth =
-          new Date(
-            currentMonth.getFullYear(),
-            currentMonth.getMonth() + 1,
-            1
-          );
-
-        renderCalendar();
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "todayBtn"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
-
-        currentMonth =
-          new Date();
-
-        currentMonth.setDate(
+      currentMonth =
+        new Date(
+          currentMonth.getFullYear(),
+          currentMonth.getMonth() - 1,
           1
         );
 
-        renderCalendar();
 
-      }
-    );
+      renderCalendar();
 
-
-  document
-    .getElementById(
-      "addContentInline"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
-
-        openModal();
-
-      }
-    );
+    }
+  );
 
 
-  document
-    .getElementById(
-      "showAllContent"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
+$("nextMonth")
+  ?.addEventListener(
+    "click",
+    () => {
 
-        switchView(
-          "contentView"
+      currentMonth =
+        new Date(
+          currentMonth.getFullYear(),
+          currentMonth.getMonth() + 1,
+          1
         );
 
-      }
-    );
+
+      renderCalendar();
+
+    }
+  );
 
 
-  document
-    .getElementById(
-      "addPublication"
-    )
-    ?.addEventListener(
-      "click",
-      () => {
+$("todayBtn")
+  ?.addEventListener(
+    "click",
+    () => {
 
-        addPublicationEditor();
-
-      }
-    );
+      currentMonth =
+        new Date();
 
 
-  document
-    .getElementById(
-      "contentForm"
-    )
-    ?.addEventListener(
-      "submit",
-      async event => {
+      renderCalendar();
 
-        try {
+    }
+  );
 
-          await saveContent(
-            event
+
+/* НОВАЯ КНОПКА + НА КАЛЕНДАРЕ */
+
+$("addPublicationTop")
+  ?.addEventListener(
+    "click",
+    () => {
+
+      openModal(
+        null,
+        isoToday()
+      );
+
+    }
+  );
+
+
+/* + КОНТЕНТ */
+
+$("addContentInline")
+  ?.addEventListener(
+    "click",
+    () => {
+
+      openModal();
+
+    }
+  );
+
+
+/* + ПУБЛИКАЦИЯ ВНУТРИ КОНТЕНТА */
+
+$("addPublication")
+  ?.addEventListener(
+    "click",
+    () => {
+
+      addPublicationEditor();
+
+    }
+  );
+
+
+$("contentForm")
+  ?.addEventListener(
+    "submit",
+    e =>
+      saveContent(
+        e
+      ).catch(
+        err => {
+
+          console.error(
+            err
           );
 
-        } catch (error) {
-
-          console.error(error);
-
-          alert(
-            "Не удалось сохранить. Проверь подключение к базе."
+          toast(
+            err.message ||
+            "Ошибка сохранения"
           );
 
         }
-
-      }
-    );
-
-
-  document
-    .getElementById(
-      "deleteContentBtn"
-    )
-    ?.addEventListener(
-      "click",
-      async () => {
-
-        await deleteContent();
-
-      }
-    );
+      )
+  );
 
 
-  document
-    .querySelectorAll(
-      "[data-close-modal]"
-    )
-    .forEach(element => {
+$("deleteContentBtn")
+  ?.addEventListener(
+    "click",
+    () =>
+      deleteContent()
+  );
 
-      element.addEventListener(
+
+document
+  .querySelectorAll(
+    "[data-close-modal]"
+  )
+  .forEach(
+    el =>
+      el.addEventListener(
         "click",
         closeModal
-      );
+      )
+  );
 
-    });
+
+document
+  .querySelectorAll(
+    ".nav-item"
+  )
+  .forEach(
+    b =>
+      b.addEventListener(
+        "click",
+        () =>
+          switchView(
+            b.dataset.view
+          )
+      )
+  );
 
 
-  document
-    .querySelectorAll(
-      ".filter-btn"
-    )
-    .forEach(button => {
+$("showAllContent")
+  ?.addEventListener(
+    "click",
+    () =>
+      switchView(
+        "contentView"
+      )
+  );
 
-      button.addEventListener(
+
+document
+  .querySelectorAll(
+    ".filter-btn"
+  )
+  .forEach(
+    b =>
+      b.addEventListener(
         "click",
         () => {
 
-          analyticsPeriod =
-            button.dataset.period;
+          activePeriod =
+            b.dataset.period;
 
 
           document
@@ -3118,10 +3533,10 @@ function setupEvents() {
               ".filter-btn"
             )
             .forEach(
-              btn =>
-                btn.classList.toggle(
+              x =>
+                x.classList.toggle(
                   "active",
-                  btn === button
+                  x === b
                 )
             );
 
@@ -3129,24 +3544,19 @@ function setupEvents() {
           renderAnalytics();
 
         }
-      );
+      )
+  );
 
-    });
 
-}
+$("analyticsPlatform")
+  ?.addEventListener(
+    "change",
+    renderAnalytics
+  );
 
 
 /* =========================================================
-   START
+   RUN
 ========================================================= */
 
-document.addEventListener(
-  "DOMContentLoaded",
-  () => {
-
-    setupEvents();
-
-    authenticate();
-
-  }
-);
+boot();

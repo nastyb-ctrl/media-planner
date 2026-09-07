@@ -5,15 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f7f7f5">
   <title>Media Planner</title>
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-  <link rel="preload" href="styles.css?v=final-3" as="style">
-  <link rel="stylesheet" href="styles.css?v=final-3">
+  <link rel="stylesheet" href="styles.css?v=final-5">
 </head>
-
 <body>
 
   <div id="authScreen" class="auth-screen">
@@ -40,7 +33,7 @@
 
     <section id="calendarView" class="view active">
 
-      <div class="page-head">
+      <div class="page-head calendar-page-head">
 
         <div>
           <h2>Календарь</h2>
@@ -101,26 +94,35 @@
           <span>Вс</span>
         </div>
 
-        <div id="calendarGrid" class="calendar-grid"></div>
+        <div
+          id="calendarGrid"
+          class="calendar-grid"
+        ></div>
 
       </div>
 
 
       <div class="section-head">
 
-        <h3>Ближайшие публикации</h3>
+        <h3>
+          Ближайшие публикации
+        </h3>
 
         <button
           id="showAllContent"
           class="text-btn"
           type="button"
         >
-          Все
+          Все <span>›</span>
         </button>
 
       </div>
 
-      <div id="upcomingList" class="upcoming-list"></div>
+
+      <div
+        id="upcomingList"
+        class="upcoming-list"
+      ></div>
 
     </section>
 
@@ -146,7 +148,56 @@
 
       </div>
 
-      <div id="contentList" class="content-list"></div>
+
+      <div class="content-tools">
+
+        <input
+          id="contentSearch"
+          class="search-input"
+          type="search"
+          placeholder="Поиск по контенту…"
+        >
+
+        <select
+          id="contentPlatformFilter"
+          class="platform-filter"
+        >
+          <option value="all">
+            Все соцсети
+          </option>
+
+          <option value="Telegram">
+            Telegram
+          </option>
+
+          <option value="Instagram">
+            Instagram
+          </option>
+
+          <option value="VK">
+            VK
+          </option>
+
+          <option value="TikTok">
+            TikTok
+          </option>
+
+          <option value="YouTube">
+            YouTube
+          </option>
+
+          <option value="Другое">
+            Другое
+          </option>
+        </select>
+
+      </div>
+
+
+      <div
+        id="contentList"
+        class="content-list"
+      ></div>
 
     </section>
 
@@ -159,12 +210,19 @@
 
         <div>
           <h2>Команда</h2>
-          <p id="teamCount">Участники команды</p>
+
+          <p id="teamCount">
+            0 участников
+          </p>
         </div>
 
       </div>
 
-      <div id="teamList" class="team-list"></div>
+
+      <div
+        id="teamList"
+        class="team-list"
+      ></div>
 
     </section>
 
@@ -176,8 +234,11 @@
       <div class="page-head">
 
         <div>
-          <h2>Анализ контента</h2>
-          <p>Простая статистика публикаций</p>
+          <h2>Анализ</h2>
+
+          <p>
+            Что происходит с контентом
+          </p>
         </div>
 
       </div>
@@ -217,17 +278,39 @@
           Всё
         </button>
 
+
         <select
           id="analyticsPlatform"
           class="analytics-platform-filter"
         >
-          <option value="all">Все соцсети</option>
-          <option value="Telegram">Telegram</option>
-          <option value="Instagram">Instagram</option>
-          <option value="VK">VK</option>
-          <option value="TikTok">TikTok</option>
-          <option value="YouTube">YouTube</option>
-          <option value="Другое">Другое</option>
+          <option value="all">
+            Все соцсети
+          </option>
+
+          <option value="Telegram">
+            Telegram
+          </option>
+
+          <option value="Instagram">
+            Instagram
+          </option>
+
+          <option value="VK">
+            VK
+          </option>
+
+          <option value="TikTok">
+            TikTok
+          </option>
+
+          <option value="YouTube">
+            YouTube
+          </option>
+
+          <option value="Другое">
+            Другое
+          </option>
+
         </select>
 
       </div>
@@ -236,48 +319,79 @@
       <div class="analytics-grid">
 
         <div class="stat-card">
-          <span>Публикаций</span>
-          <strong id="statTotal">0</strong>
+
+          <span>
+            Публикаций
+          </span>
+
+          <strong id="statTotal">
+            0
+          </strong>
+
         </div>
+
 
         <div class="stat-card">
-          <span>В среднем / неделю</span>
-          <strong id="statWeek">0</strong>
-        </div>
 
+          <span>
+            В среднем / неделю
+          </span>
 
-        <div class="analytics-card">
-
-          <h3>По соцсетям</h3>
-
-          <div id="platformStats"></div>
+          <strong id="statWeek">
+            0
+          </strong>
 
         </div>
 
 
         <div class="analytics-card">
 
-          <h3>По форматам</h3>
+          <h3>
+            По соцсетям
+          </h3>
 
-          <div id="formatStats"></div>
-
-        </div>
-
-
-        <div class="analytics-card">
-
-          <h3>По дням недели</h3>
-
-          <div id="weekdayStats"></div>
+          <div
+            id="platformStats"
+          ></div>
 
         </div>
 
 
         <div class="analytics-card">
 
-          <h3>Нагрузка по ответственным</h3>
+          <h3>
+            По форматам
+          </h3>
 
-          <div id="assigneeStats"></div>
+          <div
+            id="formatStats"
+          ></div>
+
+        </div>
+
+
+        <div class="analytics-card">
+
+          <h3>
+            По дням недели
+          </h3>
+
+          <div
+            id="weekdayStats"
+          ></div>
+
+        </div>
+
+
+        <div class="analytics-card">
+
+          <h3>
+            Нагрузка по ответственным
+          </h3>
+
+          <div
+            id="assigneeStats"
+          ></div>
 
         </div>
 
@@ -299,6 +413,7 @@
         <small>Календарь</small>
       </button>
 
+
       <button
         class="nav-item"
         data-view="contentView"
@@ -308,6 +423,7 @@
         <small>Контент</small>
       </button>
 
+
       <button
         class="nav-item"
         data-view="teamView"
@@ -316,6 +432,7 @@
         <span>○</span>
         <small>Команда</small>
       </button>
+
 
       <button
         class="nav-item"
@@ -331,9 +448,77 @@
   </main>
 
 
-  <!-- МОДАЛЬНОЕ ОКНО -->
+  <!-- ОКНО КОНКРЕТНОЙ ДАТЫ -->
 
-  <div id="modal" class="modal hidden">
+  <div
+    id="dayModal"
+    class="modal hidden"
+  >
+
+    <div
+      class="modal-backdrop"
+      data-close-day
+    ></div>
+
+
+    <div class="modal-sheet day-sheet">
+
+      <div class="modal-head">
+
+        <div>
+
+          <div
+            id="dayModalEyebrow"
+            class="modal-eyebrow"
+          ></div>
+
+          <h2 id="dayModalTitle">
+            Публикации
+          </h2>
+
+          <p id="dayModalSubtitle">
+            Расписание на выбранную дату
+          </p>
+
+        </div>
+
+
+        <button
+          class="close-btn"
+          data-close-day
+          type="button"
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <div
+        id="dayPublicationList"
+        class="day-publication-list"
+      ></div>
+
+
+      <button
+        id="addPublicationForDay"
+        class="primary-btn full-btn"
+        type="button"
+      >
+        + Добавить публикацию
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <!-- РЕДАКТИРОВАНИЕ КОНТЕНТА -->
+
+  <div
+    id="modal"
+    class="modal hidden"
+  >
 
     <div
       class="modal-backdrop"
@@ -357,6 +542,7 @@
 
         </div>
 
+
         <button
           class="close-btn"
           data-close-modal
@@ -378,7 +564,9 @@
 
         <label class="field">
 
-          <span>Название контента</span>
+          <span>
+            Название контента
+          </span>
 
           <input
             id="contentTitle"
@@ -391,7 +579,9 @@
 
         <label class="field">
 
-          <span>Описание</span>
+          <span>
+            Описание
+          </span>
 
           <textarea
             id="contentDescription"
@@ -404,7 +594,9 @@
 
         <div class="editor-head">
 
-          <h3>Публикации</h3>
+          <h3>
+            Публикации
+          </h3>
 
           <button
             type="button"
@@ -417,7 +609,9 @@
         </div>
 
 
-        <div id="publicationEditorList"></div>
+        <div
+          id="publicationEditorList"
+        ></div>
 
 
         <div class="form-actions">
@@ -429,6 +623,7 @@
           >
             Удалить контент
           </button>
+
 
           <div class="form-actions-right">
 
@@ -487,7 +682,9 @@
 
         <label class="field full">
 
-          <span>Название</span>
+          <span>
+            Название
+          </span>
 
           <input
             data-field="title"
@@ -500,16 +697,35 @@
 
         <label class="field">
 
-          <span>Соцсеть</span>
+          <span>
+            Соцсеть
+          </span>
 
           <select data-field="platform">
 
-            <option>Telegram</option>
-            <option>Instagram</option>
-            <option>VK</option>
-            <option>TikTok</option>
-            <option>YouTube</option>
-            <option>Другое</option>
+            <option>
+              Telegram
+            </option>
+
+            <option>
+              Instagram
+            </option>
+
+            <option>
+              VK
+            </option>
+
+            <option>
+              TikTok
+            </option>
+
+            <option>
+              YouTube
+            </option>
+
+            <option>
+              Другое
+            </option>
 
           </select>
 
@@ -518,17 +734,39 @@
 
         <label class="field">
 
-          <span>Формат</span>
+          <span>
+            Формат
+          </span>
 
           <select data-field="format">
 
-            <option>Пост</option>
-            <option>Рилс</option>
-            <option>Сторис</option>
-            <option>Видео</option>
-            <option>Клип</option>
-            <option>Фото</option>
-            <option>Другое</option>
+            <option>
+              Пост
+            </option>
+
+            <option>
+              Рилс
+            </option>
+
+            <option>
+              Сторис
+            </option>
+
+            <option>
+              Видео
+            </option>
+
+            <option>
+              Клип
+            </option>
+
+            <option>
+              Фото
+            </option>
+
+            <option>
+              Другое
+            </option>
 
           </select>
 
@@ -537,7 +775,9 @@
 
         <label class="field">
 
-          <span>Дата</span>
+          <span>
+            Дата
+          </span>
 
           <input
             data-field="date"
@@ -550,7 +790,9 @@
 
         <label class="field">
 
-          <span>Время</span>
+          <span>
+            Время
+          </span>
 
           <input
             data-field="time"
@@ -562,7 +804,9 @@
 
         <label class="field">
 
-          <span>Статус</span>
+          <span>
+            Статус
+          </span>
 
           <select data-field="status">
 
@@ -585,7 +829,9 @@
 
         <label class="field full">
 
-          <span>Ссылка</span>
+          <span>
+            Ссылка
+          </span>
 
           <input
             data-field="link"
@@ -598,7 +844,9 @@
 
         <label class="field full">
 
-          <span>Комментарий</span>
+          <span>
+            Комментарий
+          </span>
 
           <textarea
             data-field="description"
@@ -683,7 +931,7 @@
 
   <script
     defer
-    src="app.js?v=final-3"
+    src="app.js?v=final-5"
   ></script>
 
 </body>

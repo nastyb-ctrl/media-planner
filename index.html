@@ -1,738 +1,392 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  >
-
-  <meta
-    name="theme-color"
-    content="#f5f5f7"
-  >
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f7f5">
 
   <title>Media Planner</title>
 
-  <!-- Telegram -->
-  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  >
 
-  <!-- Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=final-1">
 </head>
 
 <body>
 
-  <!-- =====================================================
-       AUTH
-  ====================================================== -->
-
-  <section id="authView" class="auth-view">
-
+  <!-- ЭКРАН ЗАГРУЗКИ -->
+  <div id="authScreen" class="auth-screen">
     <div class="auth-card">
-
-      <div class="brand-mark">
-        MP
-      </div>
-
+      <div class="logo-mark">MP</div>
       <h1>Media Planner</h1>
-
-      <p>
-        Загружаем рабочее пространство…
-      </p>
-
+      <p>Открываем рабочее пространство команды…</p>
+      <div class="loader"></div>
     </div>
+  </div>
 
-  </section>
 
+  <!-- ПРИЛОЖЕНИЕ -->
+  <main id="app" class="app hidden">
 
-  <!-- =====================================================
-       APPLICATION
-  ====================================================== -->
-
-  <div id="app" class="app hidden">
-
-    <!-- ===================================================
-         HEADER
-    ==================================================== -->
-
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
     <header class="topbar">
 
       <div class="brand">
-
-        <div class="brand-mark">
-          MP
-        </div>
-
-        <div class="brand-text">
-
-          <div class="brand-title">
-            Media Planner
-          </div>
-
-          <div class="brand-subtitle">
-            Контент-план команды
-          </div>
-
-        </div>
-
+        <div class="brand-title">Media Planner</div>
+        <div class="brand-subtitle">Контент-план команды</div>
       </div>
 
-
       <div class="top-actions">
+        <div id="userAvatar" class="avatar avatar-lg">?</div>
 
-        <button
-          id="addContentTopBtn"
-          class="top-btn btn btn-primary"
-          type="button"
-        >
-          ＋ Контент
+        <button id="addContentTop" class="primary-btn">
+          + <span>Контент</span>
         </button>
-
       </div>
 
     </header>
 
 
-    <!-- ===================================================
-         MAIN
-    ==================================================== -->
+    <!-- ========================= -->
+    <!-- КАЛЕНДАРЬ -->
+    <!-- ========================= -->
 
-    <main class="main">
+    <section id="calendarView" class="view active">
 
+      <div class="page-head">
 
-      <!-- =================================================
-           CALENDAR
-      ================================================== -->
-
-      <section
-        id="calendarView"
-        class="view active"
-        data-view="calendar"
-      >
-
-        <div class="view-header">
-
-          <div>
-
-            <h1 class="view-title">
-              Календарь
-            </h1>
-
-            <p class="view-description">
-              Публикации команды
-            </p>
-
-          </div>
-
-          <div class="header-actions">
-
-            <button
-              id="addContentCalendarBtn"
-              class="btn btn-primary"
-              type="button"
-            >
-              ＋ Контент
-            </button>
-
-          </div>
-
+        <div>
+          <h2>Календарь</h2>
+          <p id="monthLabel"></p>
         </div>
 
+        <div class="calendar-actions">
 
-        <!-- Calendar navigation -->
-
-        <div class="calendar-toolbar">
-
-          <div class="calendar-nav">
-
-            <button
-              id="prevMonthBtn"
-              type="button"
-              aria-label="Предыдущий месяц"
-            >
-              ←
-            </button>
-
-            <div
-              id="calendarCurrent"
-              class="calendar-current"
-            >
-              Сентябрь 2026
-            </div>
-
-            <button
-              id="nextMonthBtn"
-              type="button"
-              aria-label="Следующий месяц"
-            >
-              →
-            </button>
-
-          </div>
-
+          <button
+            id="prevMonth"
+            class="icon-btn"
+            aria-label="Предыдущий месяц"
+          >
+            ‹
+          </button>
 
           <button
             id="todayBtn"
-            class="btn"
-            type="button"
+            class="today-btn"
           >
             Сегодня
           </button>
 
-        </div>
-
-
-        <!-- Calendar -->
-
-        <div class="calendar">
-
-          <div class="calendar-weekdays">
-
-            <div class="calendar-weekday">Пн</div>
-            <div class="calendar-weekday">Вт</div>
-            <div class="calendar-weekday">Ср</div>
-            <div class="calendar-weekday">Чт</div>
-            <div class="calendar-weekday">Пт</div>
-            <div class="calendar-weekday">Сб</div>
-            <div class="calendar-weekday">Вс</div>
-
-          </div>
-
-
-          <div
-            id="calendarGrid"
-            class="calendar-grid"
-          ></div>
-
-        </div>
-
-
-        <!-- Upcoming -->
-
-        <section class="upcoming-section">
-
-          <div class="section-heading">
-
-            <div>
-
-              <h2>
-                Ближайшие публикации
-              </h2>
-
-              <p>
-                Что выходит следующим
-              </p>
-
-            </div>
-
-
-            <button
-              id="showAllPublicationsBtn"
-              class="text-button"
-              type="button"
-            >
-              Смотреть все
-            </button>
-
-          </div>
-
-
-          <div
-            id="upcomingPublications"
-            class="upcoming-list"
-          ></div>
-
-        </section>
-
-      </section>
-
-
-      <!-- =================================================
-           CONTENT
-      ================================================== -->
-
-      <section
-        id="listView"
-        class="view"
-        data-view="list"
-      >
-
-        <div class="view-header">
-
-          <div>
-
-            <h1 class="view-title">
-              Контент
-            </h1>
-
-            <p class="view-description">
-              Все публикации команды
-            </p>
-
-          </div>
-
-
-          <div class="header-actions">
-
-            <button
-              id="addContentListBtn"
-              class="btn btn-primary"
-              type="button"
-            >
-              ＋ Контент
-            </button>
-
-          </div>
-
-        </div>
-
-
-        <!-- Filters -->
-
-        <div class="filters">
-
-          <select
-            id="platformFilter"
-            class="filter"
+          <button
+            id="nextMonth"
+            class="icon-btn"
+            aria-label="Следующий месяц"
           >
-
-            <option value="">
-              Все площадки
-            </option>
-
-            <option value="Telegram">
-              Telegram
-            </option>
-
-            <option value="Instagram">
-              Instagram
-            </option>
-
-            <option value="TikTok">
-              TikTok
-            </option>
-
-            <option value="VK">
-              VK
-            </option>
-
-            <option value="YouTube">
-              YouTube
-            </option>
-
-          </select>
-
-
-          <select
-            id="statusFilter"
-            class="filter"
-          >
-
-            <option value="">
-              Все статусы
-            </option>
-
-            <option value="planned">
-              Запланировано
-            </option>
-
-            <option value="progress">
-              В работе
-            </option>
-
-            <option value="done">
-              Опубликовано
-            </option>
-
-          </select>
+            ›
+          </button>
 
         </div>
 
+      </div>
+
+
+      <div class="calendar-card">
+
+        <div class="weekdays">
+          <span>Пн</span>
+          <span>Вт</span>
+          <span>Ср</span>
+          <span>Чт</span>
+          <span>Пт</span>
+          <span>Сб</span>
+          <span>Вс</span>
+        </div>
 
         <div
-          id="publicationsList"
-          class="publications-list"
+          id="calendarGrid"
+          class="calendar-grid"
         ></div>
 
-      </section>
+      </div>
 
 
-      <!-- =================================================
-           TEAM
-      ================================================== -->
+      <div class="section-head">
 
-      <section
-        id="teamView"
-        class="view"
-        data-view="team"
-      >
+        <h3>Ближайшие публикации</h3>
 
-        <div class="view-header">
+        <button
+          id="showAllContent"
+          class="text-btn"
+        >
+          Все
+        </button>
 
-          <div>
+      </div>
 
-            <h1 class="view-title">
-              Команда
-            </h1>
 
-            <p class="view-description">
-              Участники Media Planner
-            </p>
+      <div
+        id="upcomingList"
+        class="upcoming-list"
+      ></div>
 
-          </div>
+    </section>
+
+
+
+    <!-- ========================= -->
+    <!-- КОНТЕНТ -->
+    <!-- ========================= -->
+
+    <section id="contentView" class="view">
+
+      <div class="page-head">
+
+        <div>
+          <h2>Контент</h2>
+          <p>Все публикации команды</p>
+        </div>
+
+        <button
+          id="addContentInline"
+          class="primary-btn"
+        >
+          + Контент
+        </button>
+
+      </div>
+
+
+      <div
+        id="contentList"
+        class="content-list"
+      ></div>
+
+    </section>
+
+
+
+    <!-- ========================= -->
+    <!-- КОМАНДА -->
+    <!-- ========================= -->
+
+    <section id="teamView" class="view">
+
+      <div class="page-head">
+
+        <div>
+          <h2>Команда</h2>
+
+          <p id="teamCount">
+            Участники команды
+          </p>
+        </div>
+
+      </div>
+
+
+      <div
+        id="teamList"
+        class="team-list"
+      ></div>
+
+    </section>
+
+
+
+    <!-- ========================= -->
+    <!-- АНАЛИТИКА -->
+    <!-- ========================= -->
+
+    <section id="analyticsView" class="view">
+
+      <div class="page-head">
+
+        <div>
+          <h2>Анализ контента</h2>
+
+          <p>
+            Простая статистика публикаций
+          </p>
+        </div>
+
+      </div>
+
+
+      <div class="filter-row">
+
+        <button
+          class="filter-btn active"
+          data-period="week"
+        >
+          Неделя
+        </button>
+
+        <button
+          class="filter-btn"
+          data-period="month"
+        >
+          Месяц
+        </button>
+
+        <button
+          class="filter-btn"
+          data-period="3months"
+        >
+          3 месяца
+        </button>
+
+        <button
+          class="filter-btn"
+          data-period="all"
+        >
+          Всё
+        </button>
+
+      </div>
+
+
+      <div class="analytics-grid">
+
+        <div class="stat-card">
+          <span>Публикаций</span>
+          <strong id="statTotal">0</strong>
+        </div>
+
+
+        <div class="stat-card">
+          <span>В среднем / неделю</span>
+          <strong id="statWeek">0</strong>
+        </div>
+
+
+        <div class="analytics-card">
+
+          <h3>По соцсетям</h3>
+
+          <div id="platformStats"></div>
 
         </div>
 
 
-        <div
-          id="teamGrid"
-          class="team-grid"
-        ></div>
+        <div class="analytics-card">
 
-      </section>
+          <h3>По форматам</h3>
 
-
-      <!-- =================================================
-           ANALYTICS
-      ================================================== -->
-
-      <section
-        id="analyticsView"
-        class="view"
-        data-view="analytics"
-      >
-
-        <div class="view-header">
-
-          <div>
-
-            <h1 class="view-title">
-              Анализ
-            </h1>
-
-            <p class="view-description">
-              Статистика контента
-            </p>
-
-          </div>
+          <div id="formatStats"></div>
 
         </div>
 
 
-        <!-- Filters -->
+        <div class="analytics-card">
 
-        <div class="filters">
+          <h3>По дням недели</h3>
 
-          <select
-            id="analyticsPeriod"
-            class="filter"
-          >
-
-            <option value="week">
-              Неделя
-            </option>
-
-            <option
-              value="month"
-              selected
-            >
-              Месяц
-            </option>
-
-            <option value="3months">
-              3 месяца
-            </option>
-
-            <option value="all">
-              Всё время
-            </option>
-
-          </select>
-
-
-          <select
-            id="analyticsPlatform"
-            class="filter"
-          >
-
-            <option value="">
-              Все площадки
-            </option>
-
-            <option value="Telegram">
-              Telegram
-            </option>
-
-            <option value="Instagram">
-              Instagram
-            </option>
-
-            <option value="TikTok">
-              TikTok
-            </option>
-
-            <option value="VK">
-              VK
-            </option>
-
-            <option value="YouTube">
-              YouTube
-            </option>
-
-          </select>
+          <div id="weekdayStats"></div>
 
         </div>
 
 
-        <!-- Main statistics -->
+        <div class="analytics-card">
 
-        <div class="analytics-grid">
+          <h3>Нагрузка по ответственным</h3>
 
-          <div class="analytics-card">
-
-            <div class="analytics-label">
-              Публикаций
-            </div>
-
-            <div
-              id="analyticsTotal"
-              class="analytics-value"
-            >
-              0
-            </div>
-
-          </div>
-
-
-          <div class="analytics-card">
-
-            <div class="analytics-label">
-              В неделю
-            </div>
-
-            <div
-              id="analyticsPerWeek"
-              class="analytics-value"
-            >
-              0
-            </div>
-
-          </div>
-
-
-          <div class="analytics-card">
-
-            <div class="analytics-label">
-              В день
-            </div>
-
-            <div
-              id="analyticsPerDay"
-              class="analytics-value"
-            >
-              0
-            </div>
-
-          </div>
-
-
-          <div class="analytics-card">
-
-            <div class="analytics-label">
-              Площадок
-            </div>
-
-            <div
-              id="analyticsPlatforms"
-              class="analytics-value"
-            >
-              0
-            </div>
-
-          </div>
+          <div id="assigneeStats"></div>
 
         </div>
 
+      </div>
 
-        <!-- Platforms -->
-
-        <div class="analytics-section">
-
-          <h3>
-            Публикации по площадкам
-          </h3>
-
-          <div
-            id="platformAnalytics"
-          ></div>
-
-        </div>
+    </section>
 
 
-        <!-- Formats -->
 
-        <div class="analytics-section">
+    <!-- ========================= -->
+    <!-- НИЖНЯЯ НАВИГАЦИЯ -->
+    <!-- ========================= -->
 
-          <h3>
-            Публикации по формату
-          </h3>
-
-          <div
-            id="formatAnalytics"
-          ></div>
-
-        </div>
-
-
-        <!-- Weekdays -->
-
-        <div class="analytics-section">
-
-          <h3>
-            Публикации по дням недели
-          </h3>
-
-          <div
-            id="weekdayAnalytics"
-          ></div>
-
-        </div>
-
-
-        <!-- Responsible -->
-
-        <div class="analytics-section">
-
-          <h3>
-            Нагрузка по ответственным
-          </h3>
-
-          <div
-            id="assigneeAnalytics"
-          ></div>
-
-        </div>
-
-      </section>
-
-    </main>
-
-
-    <!-- ===================================================
-         MOBILE NAV
-    ==================================================== -->
-
-    <nav
-      id="bottomNav"
-      class="bottom-nav"
-    >
+    <nav class="bottom-nav">
 
       <button
         class="nav-item active"
-        data-view="calendar"
-        type="button"
+        data-view="calendarView"
       >
-
-        <span class="nav-icon">
-          ▦
-        </span>
-
-        <span>
-          Календарь
-        </span>
-
+        <span>▦</span>
+        <small>Календарь</small>
       </button>
 
 
       <button
         class="nav-item"
-        data-view="list"
-        type="button"
+        data-view="contentView"
       >
-
-        <span class="nav-icon">
-          ≡
-        </span>
-
-        <span>
-          Контент
-        </span>
-
+        <span>◫</span>
+        <small>Контент</small>
       </button>
 
 
       <button
         class="nav-item"
-        data-view="team"
-        type="button"
+        data-view="teamView"
       >
-
-        <span class="nav-icon">
-          ♧
-        </span>
-
-        <span>
-          Команда
-        </span>
-
+        <span>○</span>
+        <small>Команда</small>
       </button>
 
 
       <button
         class="nav-item"
-        data-view="analytics"
-        type="button"
+        data-view="analyticsView"
       >
-
-        <span class="nav-icon">
-          ▥
-        </span>
-
-        <span>
-          Анализ
-        </span>
-
+        <span>⌁</span>
+        <small>Анализ</small>
       </button>
 
     </nav>
 
-  </div>
+  </main>
 
 
-  <!-- =====================================================
-       CONTENT MODAL
-  ====================================================== -->
+
+  <!-- ========================= -->
+  <!-- ОКНО КОНТЕНТА -->
+  <!-- ========================= -->
 
   <div
-    id="taskModal"
+    id="modal"
     class="modal hidden"
   >
 
-    <div class="modal-card">
+    <div
+      class="modal-backdrop"
+      data-close-modal
+    ></div>
 
 
-      <!-- Modal header -->
+    <div class="modal-sheet">
 
-      <div class="modal-header">
+      <div class="modal-head">
 
-        <h2
-          id="modalTitle"
-          class="modal-title"
-        >
-          Новый контент
-        </h2>
+        <div>
+
+          <h2 id="modalTitle">
+            Новый контент
+          </h2>
+
+          <p>
+            Один контент может содержать несколько публикаций
+          </p>
+
+        </div>
 
 
         <button
-          id="closeModalBtn"
-          class="modal-close"
-          type="button"
-          aria-label="Закрыть"
+          class="close-btn"
+          data-close-modal
         >
           ×
         </button>
@@ -740,154 +394,138 @@
       </div>
 
 
-      <!-- Modal body -->
 
-      <div class="modal-body">
+      <form id="contentForm">
+
+        <input
+          type="hidden"
+          id="editingContentId"
+        >
 
 
-        <!-- Content title -->
+        <!-- НАЗВАНИЕ -->
 
-        <div class="form-group">
+        <label class="field">
 
-          <label
-            class="form-label"
-            for="contentTitle"
-          >
+          <span>
             Название контента
-          </label>
+          </span>
 
           <input
             id="contentTitle"
-            type="text"
-            placeholder="Например: Анонс мероприятия"
+            required
+            placeholder="Например, Осенний анонс"
           >
 
-        </div>
+        </label>
 
 
-        <!-- Content description -->
 
-        <div class="form-group">
+        <!-- ОПИСАНИЕ -->
 
-          <label
-            class="form-label"
-            for="contentDescription"
-          >
+        <label class="field">
+
+          <span>
             Описание
-          </label>
+          </span>
 
           <textarea
             id="contentDescription"
-            placeholder="Коротко о содержании..."
+            rows="2"
+            placeholder="Коротко о задаче"
           ></textarea>
+
+        </label>
+
+
+
+        <!-- ПУБЛИКАЦИИ -->
+
+        <div class="editor-head">
+
+          <h3>
+            Публикации
+          </h3>
+
+          <button
+            type="button"
+            id="addPublication"
+            class="secondary-btn"
+          >
+            + Публикация
+          </button>
 
         </div>
 
 
-        <!-- Publications header -->
+        <div
+          id="publicationEditorList"
+        ></div>
 
-        <div class="section-heading compact">
 
-          <div>
 
-            <h2>
-              Публикации
-            </h2>
+        <!-- КНОПКИ -->
 
-            <p>
-              Один контент — несколько публикаций
-            </p>
+        <div class="form-actions">
+
+          <button
+            type="button"
+            id="deleteContentBtn"
+            class="danger-btn hidden"
+          >
+            Удалить контент
+          </button>
+
+
+          <div class="form-actions-right">
+
+            <button
+              type="button"
+              class="secondary-btn"
+              data-close-modal
+            >
+              Отмена
+            </button>
+
+            <button
+              type="submit"
+              class="primary-btn"
+            >
+              Сохранить
+            </button>
 
           </div>
 
-
-          <button
-            id="addPublicationBtn"
-            class="btn"
-            type="button"
-          >
-            ＋ Добавить
-          </button>
-
         </div>
 
-
-        <!-- IMPORTANT:
-             This ID must match app.js
-        -->
-
-        <div
-          id="publicationsList"
-          class="publications-editor"
-        ></div>
-
-      </div>
-
-
-      <!-- Modal footer -->
-
-      <div class="modal-footer">
-
-        <div class="modal-footer-left">
-
-          <button
-            id="deleteContentBtn"
-            class="btn btn-danger"
-            type="button"
-          >
-            Удалить
-          </button>
-
-        </div>
-
-
-        <div class="modal-footer-right">
-
-          <button
-            id="cancelModalBtn"
-            class="btn"
-            type="button"
-          >
-            Отмена
-          </button>
-
-
-          <button
-            id="saveTaskBtn"
-            class="btn btn-primary"
-            type="button"
-          >
-            Сохранить
-          </button>
-
-        </div>
-
-      </div>
+      </form>
 
     </div>
 
   </div>
 
 
-  <!-- =====================================================
-       PUBLICATION TEMPLATE
-  ====================================================== -->
+
+  <!-- ========================= -->
+  <!-- ШАБЛОН ПУБЛИКАЦИИ -->
+  <!-- ========================= -->
 
   <template id="publicationTemplate">
 
-    <article class="publication-editor">
+    <article
+      class="publication-editor"
+      data-publication
+    >
 
+      <div class="publication-editor-head">
 
-      <div class="publication-editor-header">
-
-        <div class="publication-editor-title">
+        <div class="pub-number">
           Публикация
         </div>
 
-
         <button
-          class="remove-publication"
           type="button"
+          class="remove-publication"
         >
           Удалить
         </button>
@@ -895,184 +533,156 @@
       </div>
 
 
-      <div class="publication-fields">
+
+      <div class="form-grid">
 
 
-        <!-- Platform -->
+        <!-- НАЗВАНИЕ -->
 
-        <div class="form-group">
+        <label class="field full">
 
-          <label class="form-label">
-            Площадка
-          </label>
+          <span>
+            Название
+          </span>
 
-          <select
-            class="publication-platform-input"
+          <input
+            data-field="title"
+            required
+            placeholder="Название публикации"
           >
 
-            <option value="Telegram">
+        </label>
+
+
+
+        <!-- СОЦСЕТЬ -->
+
+        <label class="field">
+
+          <span>
+            Соцсеть
+          </span>
+
+          <select data-field="platform">
+
+            <option>
               Telegram
             </option>
 
-            <option value="Instagram">
+            <option>
               Instagram
             </option>
 
-            <option value="TikTok">
-              TikTok
-            </option>
-
-            <option value="VK">
+            <option>
               VK
             </option>
 
-            <option value="YouTube">
+            <option>
+              TikTok
+            </option>
+
+            <option>
               YouTube
             </option>
 
-          </select>
-
-        </div>
-
-
-        <!-- Format -->
-
-        <div class="form-group">
-
-          <label class="form-label">
-            Формат
-          </label>
-
-          <select
-            class="publication-format-input"
-          >
-
-            <option value="Пост">
-              Пост
-            </option>
-
-            <option value="Рилс">
-              Рилс
-            </option>
-
-            <option value="Сторис">
-              Сторис
-            </option>
-
-            <option value="Видео">
-              Видео
-            </option>
-
-            <option value="Клип">
-              Клип
-            </option>
-
-            <option value="Карусель">
-              Карусель
-            </option>
-
-            <option value="Другое">
+            <option>
               Другое
             </option>
 
           </select>
 
-        </div>
+        </label>
 
 
-        <!-- Date -->
 
-        <div class="form-group">
+        <!-- ФОРМАТ -->
 
-          <label class="form-label">
+        <label class="field">
+
+          <span>
+            Формат
+          </span>
+
+          <select data-field="format">
+
+            <option>
+              Пост
+            </option>
+
+            <option>
+              Рилс
+            </option>
+
+            <option>
+              Сторис
+            </option>
+
+            <option>
+              Видео
+            </option>
+
+            <option>
+              Клип
+            </option>
+
+            <option>
+              Фото
+            </option>
+
+            <option>
+              Другое
+            </option>
+
+          </select>
+
+        </label>
+
+
+
+        <!-- ДАТА -->
+
+        <label class="field">
+
+          <span>
             Дата
-          </label>
+          </span>
 
           <input
-            class="publication-date-input"
+            data-field="date"
             type="date"
+            required
           >
 
-        </div>
+        </label>
 
 
-        <!-- Time -->
 
-        <div class="form-group">
+        <!-- ВРЕМЯ -->
 
-          <label class="form-label">
+        <label class="field">
+
+          <span>
             Время
-          </label>
+          </span>
 
           <input
-            class="publication-time-input"
+            data-field="time"
             type="time"
           >
 
-        </div>
+        </label>
 
 
-        <!-- Publication title -->
 
-        <div class="form-group full">
+        <!-- СТАТУС -->
 
-          <label class="form-label">
-            Название публикации
-          </label>
+        <label class="field">
 
-          <input
-            class="publication-title-input"
-            type="text"
-            placeholder="Например: Анонс"
-          >
-
-        </div>
-
-
-        <!-- Responsible -->
-
-        <div class="form-group full">
-
-          <label class="form-label">
-            Ответственные
-          </label>
-
-          <div class="assignee-picker">
-
-            <div class="assignee-selected"></div>
-
-
-            <div class="assignee-dropdown">
-
-              <input
-                class="assignee-search"
-                type="text"
-                placeholder="Поиск участника..."
-              >
-
-
-              <div
-                class="assignee-options"
-              ></div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-
-        <!-- Status -->
-
-        <div class="form-group">
-
-          <label class="form-label">
+          <span>
             Статус
-          </label>
+          </span>
 
-          <select
-            class="publication-status-input"
-          >
+          <select data-field="status">
 
             <option value="planned">
               Запланировано
@@ -1083,97 +693,115 @@
             </option>
 
             <option value="done">
-              Опубликовано
+              Готово
             </option>
 
           </select>
 
-        </div>
+        </label>
 
 
-        <!-- Link -->
 
-        <div class="form-group">
+        <!-- ССЫЛКА -->
 
-          <label class="form-label">
+        <label class="field full">
+
+          <span>
             Ссылка
-          </label>
+          </span>
 
           <input
-            class="publication-link-input"
+            data-field="link"
             type="url"
-            placeholder="https://..."
+            placeholder="https://…"
           >
 
-        </div>
+        </label>
 
 
-        <!-- Description -->
 
-        <div class="form-group full">
+        <!-- КОММЕНТАРИЙ -->
 
-          <label class="form-label">
-            Заметка
-          </label>
+        <label class="field full">
+
+          <span>
+            Комментарий
+          </span>
 
           <textarea
-            class="publication-description-input"
-            placeholder="Дополнительная информация..."
+            data-field="description"
+            rows="2"
+            placeholder="Дополнительная информация"
           ></textarea>
 
+        </label>
+
+      </div>
+
+
+
+      <!-- ОТВЕТСТВЕННЫЕ -->
+
+      <div class="assignee-block">
+
+        <div class="field-label">
+          Ответственные
         </div>
 
 
-        <!-- Reminders -->
-
-        <div class="form-group full">
-
-          <label class="form-label">
-            Напоминания
-          </label>
+        <div
+          class="selected-assignees"
+          data-selected
+        ></div>
 
 
-          <div class="reminders">
+        <div class="assignee-picker">
 
-            <label class="checkbox">
-
-              <input
-                class="reminder-24h-input"
-                type="checkbox"
-                checked
-              >
-
-              За 24 часа
-
-            </label>
+          <input
+            data-search
+            type="search"
+            placeholder="Поиск участника"
+          >
 
 
-            <label class="checkbox">
-
-              <input
-                class="reminder-3h-input"
-                type="checkbox"
-              >
-
-              За 3 часа
-
-            </label>
-
-
-            <label class="checkbox">
-
-              <input
-                class="reminder-1h-input"
-                type="checkbox"
-              >
-
-              За 1 час
-
-            </label>
-
-          </div>
+          <div data-options></div>
 
         </div>
+
+      </div>
+
+
+
+      <!-- НАПОМИНАНИЯ -->
+
+      <div class="reminders">
+
+        <label>
+          <input
+            data-reminder="24h"
+            type="checkbox"
+            checked
+          >
+          за 24 часа
+        </label>
+
+
+        <label>
+          <input
+            data-reminder="3h"
+            type="checkbox"
+          >
+          за 3 часа
+        </label>
+
+
+        <label>
+          <input
+            data-reminder="1h"
+            type="checkbox"
+          >
+          за 1 час
+        </label>
 
       </div>
 
@@ -1182,21 +810,20 @@
   </template>
 
 
-  <!-- =====================================================
-       TOAST
-  ====================================================== -->
 
-  <div
-    id="toast"
-    class="toast hidden"
-  ></div>
+  <!-- TELEGRAM -->
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 
-  <!-- =====================================================
-       APP SCRIPT
-  ====================================================== -->
+  <!-- SUPABASE -->
 
-  <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+
+  <!-- APP -->
+
+  <script src="app.js?v=final-1"></script>
 
 </body>
 </html>

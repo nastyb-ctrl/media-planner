@@ -1,31 +1,35 @@
-const SUPABASE_URL =
-  "https://vkvrwayzqrlsfsgjjwpy.supabase.co";
+/* =========================================================
+   MEDIA PLANNER — APP.JS
+   ========================================================= */
 
-const SUPABASE_KEY =
-  "sb_publishable_-kj7hiC7uou3db2wpwFM_w_jgXQNpnb";
+const SUPABASE_URL = "https://vkvrwayzqrlsfsgjjwpy.supabase.co";
+const SUPABASE_KEY = "sb_publishable_-kj7hiC7uou3db2wpwFM_w_jgXQNpnb";
 
+const { createClient } = supabase;
 
-const { createClient } =
-  supabase;
-
-
-const db =
-  createClient(
-    SUPABASE_URL,
-    SUPABASE_KEY,
-    {
-      auth:{
-        persistSession:true,
-        autoRefreshToken:true,
-        detectSessionInUrl:false
-      }
+const db = createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
     }
-  );
+  }
+);
 
 
-const tg =
-  window.Telegram?.WebApp;
+/* =========================================================
+   TELEGRAM
+   ========================================================= */
 
+const tg = window.Telegram?.WebApp;
+
+
+/* =========================================================
+   STATE
+   ========================================================= */
 
 let currentUser = null;
 let currentProfile = null;
@@ -36,11 +40,8 @@ let contents = [];
 let publications = [];
 let assigneeRows = [];
 
-let currentMonth =
-  new Date();
-
-let activePeriod =
-  "week";
+let currentMonth = new Date();
+let activePeriod = "week";
 
 let realtimeChannels = [];
 
@@ -50,45 +51,36 @@ let plannerPoll = null;
 let saving = false;
 
 
-const $ =
-  id =>
-    document.getElementById(id);
+/* =========================================================
+   HELPERS
+   ========================================================= */
 
+const $ = id => document.getElementById(id);
 
-const esc =
-  value =>
-    String(value || "")
-      .replace(
-        /[&<>"']/g,
-        c =>
-          ({
-            "&":"&amp;",
-            "<":"&lt;",
-            ">":"&gt;",
-            '"':"&quot;",
-            "'":"&#039;"
-          }[c])
-      );
-
-
-const pad =
-  n =>
-    String(n).padStart(2,"0");
-
-
-function isoToday(){
-
-  const d =
-    new Date();
-
-  return (
-    `${d.getFullYear()}-` +
-    `${pad(d.getMonth()+1)}-` +
-    `${pad(d.getDate())}`
+const esc = (value = "") =>
+  String(value).replace(
+    /[&<>"']/g,
+    char => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    }[char])
   );
 
-}
+const pad = number =>
+  String(number).padStart(2, "0");
 
+const isoToday = () => {
+  const date = new Date();
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join("-");
+};
 
 const monthNames = [
   "январь",
@@ -105,7 +97,6 @@ const monthNames = [
   "декабрь"
 ];
 
-
 const shortMonths = [
   "янв",
   "фев",
@@ -121,222 +112,252 @@ const shortMonths = [
   "дек"
 ];
 
+const weekNames = [
+  "вс",
+  "пн",
+  "вт",
+  "ср",
+  "чт",
+  "пт",
+  "сб"
+];
 
-function telegramInitData(){
 
+/* =========================================================
+   TELEGRAM INIT DATA
+   ========================================================= */
+
+function telegramInitData() {
   return tg?.initData || "";
-
 }
 
 
-function toast(text){
+/* =========================================================
+   TOAST
+   ========================================================= */
 
-  const old =
-    document.querySelector(".toast");
+function toast(text) {
+  const old = document.querySelector(".toast");
 
-  if(old){
+  if (old) {
     old.remove();
   }
 
+  const element = document.createElement("div");
 
-  const el =
-    document.createElement("div");
+  element.className = "toast";
+  element.textContent = text;
 
-  el.className =
-    "toast";
+  document.body.appendChild(element);
 
-  el.textContent =
-    text;
-
-  document.body.appendChild(
-    el
-  );
-
-
-  setTimeout(
-    () => el.remove(),
-    2200
-  );
-
+  setTimeout(() => {
+    element.remove();
+  }, 2200);
 }
 
 
-function avatarHtml(
-  profile
-){
+/* =========================================================
+   AVATAR
+   ========================================================= */
 
+function avatarHtml(profile, cls = "") {
   const name =
     profile?.telegram_first_name ||
     profile?.telegram_username ||
     "?";
 
-
   const initials =
     name
-      .slice(0,2)
+      .slice(0, 2)
       .toUpperCase();
 
-
-  if(
-    profile?.telegram_photo_url
-  ){
-
+  if (profile?.telegram_photo_url) {
     return `
-      <div class="avatar">
+      <div class="avatar ${cls}">
         <img
-          src="${esc(
-            profile.telegram_photo_url
-          )}"
+          src="${esc(profile.telegram_photo_url)}"
           alt=""
         >
       </div>
     `;
-
   }
 
-
   return `
-    <div class="avatar">
+    <div class="avatar ${cls}">
       ${esc(initials)}
     </div>
   `;
-
-}
-
-
-function platformClass(
-  platform
-){
-
-  return String(
-    platform || ""
-  )
-    .toLowerCase()
-    .replace(
-      /[^a-zа-яё]/gi,
-      ""
-    );
-
-}
-
-
-function formatDate(
-  date
-){
-
-  if(!date){
-    return "";
-  }
-
-
-  const [
-    y,
-    m,
-    d
-  ] =
-    date
-      .split("-")
-      .map(Number);
-
-
-  return `
-    ${d}
-    ${shortMonths[m-1]}
-  `;
-}
-
-
-function statusLabel(
-  status
-){
-
-  if(
-    status === "progress"
-  ){
-
-    return "В работе";
-
-  }
-
-
-  if(
-    status === "done"
-  ){
-
-    return "Готово";
-
-  }
-
-
-  return "Запланировано";
-
 }
 
 
 /* =========================================================
-   ЗАПУСК
-========================================================= */
+   PLATFORM
+   ========================================================= */
 
-async function boot(){
+function platformClass(platform) {
+  return String(platform || "")
+    .toLowerCase()
+    .replace(/[^a-zа-яё]/gi, "");
+}
 
-  try{
+
+/* =========================================================
+   DATE
+   ========================================================= */
+
+function formatDate(date) {
+  if (!date) {
+    return "";
+  }
+
+  const parts = date
+    .split("-")
+    .map(Number);
+
+  const year = parts[0];
+  const month = parts[1];
+  const day = parts[2];
+
+  return `${day} ${shortMonths[month - 1]}`;
+}
+
+
+function toISO(date) {
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join("-");
+}
+
+
+/* =========================================================
+   STATUS
+   ========================================================= */
+
+function statusLabel(status) {
+  if (status === "progress") {
+    return "В работе";
+  }
+
+  if (status === "done") {
+    return "Готово";
+  }
+
+  return "Запланировано";
+}
+
+
+/* =========================================================
+   PLURAL
+   ========================================================= */
+
+function plural(number, one, few, many) {
+  const mod10 = number % 10;
+  const mod100 = number % 100;
+
+  if (
+    mod10 === 1 &&
+    mod100 !== 11
+  ) {
+    return one;
+  }
+
+  if (
+    mod10 >= 2 &&
+    mod10 <= 4 &&
+    (
+      mod100 < 12 ||
+      mod100 > 14
+    )
+  ) {
+    return few;
+  }
+
+  return many;
+}
+
+
+/* =========================================================
+   PUBLICATION SORT
+   ========================================================= */
+
+function sortPublication(a, b) {
+  const aa =
+    `${a.publication_date}T${a.publication_time || "23:59:59"}`;
+
+  const bb =
+    `${b.publication_date}T${b.publication_time || "23:59:59"}`;
+
+  return aa.localeCompare(bb);
+}
+
+
+/* =========================================================
+   BOOT
+   ========================================================= */
+
+async function boot() {
+  try {
+
+    /*
+      Telegram Mini App
+    */
 
     tg?.ready();
-
     tg?.expand();
 
+    if (tg?.setHeaderColor) {
+      tg.setHeaderColor("#f7f7f5");
+    }
 
-    tg?.setHeaderColor?.(
-      "#f7f7f5"
-    );
+    if (tg?.setBackgroundColor) {
+      tg.setBackgroundColor("#f7f7f5");
+    }
 
-    tg?.setBackgroundColor?.(
-      "#f7f7f5"
-    );
 
+    /*
+      Supabase session
+    */
 
     const {
-      data:sessionData
-    } =
-      await db.auth.getSession();
+      data: sessionData
+    } = await db.auth.getSession();
 
-
-    if(
-      !sessionData.session
-    ){
+    if (!sessionData.session) {
 
       const {
         error
-      } =
-        await db.auth
-          .signInAnonymously();
+      } = await db.auth.signInAnonymously();
 
-
-      if(error){
+      if (error) {
         throw error;
       }
-
     }
 
 
     const {
-      data:sessionNow
-    } =
-      await db.auth.getSession();
+      data: sessionNow
+    } = await db.auth.getSession();
 
+    if (!sessionNow?.session?.user) {
+      throw new Error(
+        "Не удалось создать рабочую сессию."
+      );
+    }
 
     currentUser =
       sessionNow.session.user;
 
 
-    if(
-      !telegramInitData()
-    ){
+    /*
+      Telegram validation
+    */
 
+    if (!telegramInitData()) {
       throw new Error(
         "Откройте планер через Telegram."
       );
-
     }
 
 
@@ -344,22 +365,21 @@ async function boot(){
       await db.functions.invoke(
         "telegram-auth",
         {
-          body:{
+          body: {
             initData:
               telegramInitData()
           }
         }
       );
 
-
-    if(
-      authResult.error
-    ){
-
+    if (authResult.error) {
       throw authResult.error;
-
     }
 
+
+    /*
+      Load application
+    */
 
     await loadProfile();
 
@@ -373,433 +393,417 @@ async function boot(){
 
     showApp();
 
-  }
-  catch(error){
+  } catch (error) {
 
-    console.error(error);
+    console.error(
+      "BOOT ERROR:",
+      error
+    );
 
     showAuthError(
       error?.message ||
-      "Не удалось открыть планер"
+      "Не удалось открыть планер."
     );
-
   }
-
 }
 
 
 /* =========================================================
-   ПРОФИЛЬ
-========================================================= */
+   PROFILE
+   ========================================================= */
 
-async function loadProfile(){
+async function loadProfile() {
 
   const {
     data,
     error
-  } =
-    await db
-      .from("profiles")
-      .select("*")
-      .eq(
-        "id",
-        currentUser.id
-      )
-      .maybeSingle();
+  } = await db
+    .from("profiles")
+    .select("*")
+    .eq("id", currentUser.id)
+    .maybeSingle();
 
-
-  if(error){
+  if (error) {
     throw error;
   }
 
-
-  currentProfile =
-    data;
-
+  currentProfile = data;
 }
 
 
 /* =========================================================
-   ПРОЕКТ
-========================================================= */
+   PROJECT
+   ========================================================= */
 
-async function ensureProject(){
+async function ensureProject() {
 
   let {
     data,
     error
-  } =
-    await db
-      .from("projects")
-      .select("*")
-      .order(
-        "created_at",
-        {
-          ascending:true
-        }
-      )
-      .limit(1)
-      .maybeSingle();
+  } = await db
+    .from("projects")
+    .select("*")
+    .order(
+      "created_at",
+      {
+        ascending: true
+      }
+    )
+    .limit(1)
+    .maybeSingle();
 
-
-  if(error){
+  if (error) {
     throw error;
   }
 
 
-  if(!data){
+  /*
+    If there is no project,
+    create default one.
+  */
+
+  if (!data) {
 
     const {
-      data:created,
-      error:createError
-    } =
-      await db.rpc(
-        "create_default_project"
-      );
+      data: created,
+      error: createError
+    } = await db.rpc(
+      "create_default_project"
+    );
 
-
-    if(createError){
+    if (createError) {
       throw createError;
     }
-
 
     data =
       Array.isArray(created)
         ? created[0]
         : created;
-
   }
 
 
-  if(!data){
-
+  if (!data) {
     throw new Error(
       "Не найден проект команды."
     );
-
   }
 
+  currentProject = data;
 
-  currentProject =
-    data;
 
+  /*
+    Add current user to project.
+  */
 
   const {
-    error:memberError
-  } =
-    await db
-      .from("project_members")
-      .upsert(
-        {
-          project_id:
-            currentProject.id,
+    error: memberError
+  } = await db
+    .from("project_members")
+    .upsert(
+      {
+        project_id:
+          currentProject.id,
 
-          user_id:
-            currentUser.id
-        },
-        {
-          onConflict:
-            "project_id,user_id",
+        user_id:
+          currentUser.id
+      },
+      {
+        onConflict:
+          "project_id,user_id",
 
-          ignoreDuplicates:
-            true
-        }
-      );
-
-
-  if(memberError){
-
-    console.warn(
-      "project membership:",
-      memberError.message
+        ignoreDuplicates:
+          true
+      }
     );
 
+  if (memberError) {
+    console.warn(
+      "PROJECT MEMBERSHIP:",
+      memberError.message
+    );
   }
-
 }
 
 
 /* =========================================================
-   ЗАГРУЗКА
-========================================================= */
+   LOAD EVERYTHING
+   ========================================================= */
 
-async function loadAll(){
+async function loadAll() {
 
   await Promise.all([
     loadMembers(),
     loadContent()
   ]);
 
-
   renderEverything();
-
 }
 
 
-async function loadMembers(){
+/* =========================================================
+   LOAD ALL TELEGRAM USERS
+   ========================================================= */
+
+async function loadMembers() {
 
   const {
     data,
     error
-  } =
-    await db
-      .from("profiles")
-      .select(
-        `
+  } = await db
+    .from("profiles")
+    .select(
+      `
         id,
         telegram_id,
         telegram_username,
         telegram_first_name,
         telegram_photo_url
-        `
-      )
-      .not(
-        "telegram_id",
-        "is",
-        null
-      )
-      .order(
-        "telegram_first_name",
-        {
-          ascending:true
-        }
-      );
-
-
-  if(error){
-
-    console.warn(
-      "members:",
-      error.message
+      `
+    )
+    .not(
+      "telegram_id",
+      "is",
+      null
+    )
+    .order(
+      "telegram_first_name",
+      {
+        ascending: true
+      }
     );
 
+
+  if (error) {
+
+    console.warn(
+      "MEMBERS:",
+      error.message
+    );
 
     members =
       currentProfile
         ? [currentProfile]
         : [];
 
-
     renderTeam();
 
     return;
-
   }
 
 
-  members =
-    data || [];
+  members = data || [];
 
 
-  if(
+  /*
+    Make sure current user
+    is always visible.
+  */
+
+  if (
     currentProfile &&
     !members.some(
-      m =>
-        m.id ===
+      member =>
+        member.id ===
         currentProfile.id
     )
-  ){
-
+  ) {
     members.unshift(
       currentProfile
     );
-
   }
 
 
   renderTeam();
-
-}
-
-
-async function loadContent(){
-
-  if(!currentProject){
-    return;
-  }
-
-
-  const {
-    data:c,
-    error:ce
-  } =
-    await db
-      .from("content")
-      .select("*")
-      .eq(
-        "project_id",
-        currentProject.id
-      )
-      .order(
-        "created_at",
-        {
-          ascending:false
-        }
-      );
-
-
-  if(ce){
-    throw ce;
-  }
-
-
-  const {
-    data:p,
-    error:pe
-  } =
-    await db
-      .from("publications")
-      .select("*")
-      .eq(
-        "project_id",
-        currentProject.id
-      )
-      .order(
-        "publication_date",
-        {
-          ascending:true
-        }
-      )
-      .order(
-        "publication_time",
-        {
-          ascending:true,
-          nullsFirst:false
-        }
-      );
-
-
-  if(pe){
-    throw pe;
-  }
-
-
-  const ids =
-    (p || [])
-      .map(
-        x =>
-          x.id
-      );
-
-
-  let a = [];
-
-
-  if(ids.length){
-
-    const {
-      data,
-      error
-    } =
-      await db
-        .from(
-          "publication_assignees"
-        )
-        .select(
-          "publication_id,user_id"
-        )
-        .in(
-          "publication_id",
-          ids
-        );
-
-
-    if(error){
-      throw error;
-    }
-
-
-    a =
-      data || [];
-
-  }
-
-
-  contents =
-    c || [];
-
-  publications =
-    p || [];
-
-  assigneeRows =
-    a;
-
 }
 
 
 /* =========================================================
-   ОБНОВЛЕНИЕ
-========================================================= */
+   LOAD CONTENT + PUBLICATIONS
+   ========================================================= */
 
-function setupRealtime(){
+async function loadContent() {
 
-  realtimeChannels
-    .forEach(
-      channel =>
-        db.removeChannel(
-          channel
-        )
-    );
+  if (!currentProject) {
+    return;
+  }
 
 
-  realtimeChannels =
-    [];
+  /*
+    Content
+  */
 
-
-  [
-    "content",
-    "publications",
-    "publication_assignees"
-  ]
-    .forEach(
-      table => {
-
-        const channel =
-          db
-            .channel(
-              `planner-${table}`
-            )
-            .on(
-              "postgres_changes",
-              {
-                event:"*",
-                schema:"public",
-                table
-              },
-              async () => {
-
-                try{
-
-                  await loadContent();
-
-                  renderEverything();
-
-                }
-                catch(error){
-
-                  console.warn(
-                    "Realtime refresh:",
-                    error.message
-                  );
-
-                }
-
-              }
-            )
-            .subscribe();
-
-
-        realtimeChannels.push(
-          channel
-        );
-
+  const {
+    data: contentData,
+    error: contentError
+  } = await db
+    .from("content")
+    .select("*")
+    .eq(
+      "project_id",
+      currentProject.id
+    )
+    .order(
+      "created_at",
+      {
+        ascending: false
       }
     );
 
+
+  if (contentError) {
+    throw contentError;
+  }
+
+
+  /*
+    Publications
+  */
+
+  const {
+    data: publicationData,
+    error: publicationError
+  } = await db
+    .from("publications")
+    .select("*")
+    .eq(
+      "project_id",
+      currentProject.id
+    )
+    .order(
+      "publication_date",
+      {
+        ascending: true
+      }
+    )
+    .order(
+      "publication_time",
+      {
+        ascending: true,
+        nullsFirst: false
+      }
+    );
+
+
+  if (publicationError) {
+    throw publicationError;
+  }
+
+
+  /*
+    Assignees
+  */
+
+  const publicationIds =
+    (publicationData || [])
+      .map(publication =>
+        publication.id
+      );
+
+
+  let assignees = [];
+
+
+  if (publicationIds.length) {
+
+    const {
+      data,
+      error
+    } = await db
+      .from("publication_assignees")
+      .select(
+        "publication_id,user_id"
+      )
+      .in(
+        "publication_id",
+        publicationIds
+      );
+
+    if (error) {
+      throw error;
+    }
+
+    assignees = data || [];
+  }
+
+
+  contents =
+    contentData || [];
+
+  publications =
+    publicationData || [];
+
+  assigneeRows =
+    assignees;
 }
 
 
-function startPolling(){
+/* =========================================================
+   REALTIME
+   ========================================================= */
+
+function setupRealtime() {
+
+  realtimeChannels.forEach(
+    channel =>
+      db.removeChannel(channel)
+  );
+
+  realtimeChannels = [];
+
+
+  const tables = [
+    "content",
+    "publications",
+    "publication_assignees"
+  ];
+
+
+  tables.forEach(table => {
+
+    const channel =
+      db
+        .channel(
+          `planner-${table}`
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table
+          },
+          async () => {
+
+            try {
+
+              await loadContent();
+
+              renderEverything();
+
+            } catch (error) {
+
+              console.warn(
+                "REALTIME REFRESH:",
+                error.message
+              );
+            }
+          }
+        )
+        .subscribe();
+
+
+    realtimeChannels.push(
+      channel
+    );
+  });
+}
+
+
+/* =========================================================
+   POLLING
+   ========================================================= */
+
+function startPolling() {
 
   clearInterval(
     memberPoll
@@ -810,90 +814,104 @@ function startPolling(){
   );
 
 
+  /*
+    Team refresh
+  */
+
   memberPoll =
     setInterval(
       async () => {
 
-        try{
-
+        try {
           await loadMembers();
-
-        }
-        catch(error){
-
+        } catch (error) {
           console.warn(
+            "TEAM REFRESH:",
             error.message
           );
-
         }
 
       },
       15000
     );
 
+
+  /*
+    Planner refresh.
+    This makes the shared planner
+    update even if Realtime is unavailable.
+  */
 
   plannerPoll =
     setInterval(
       async () => {
 
-        try{
+        try {
 
           await loadContent();
 
           renderEverything();
 
-        }
-        catch(error){
+        } catch (error) {
 
           console.warn(
-            "Planner refresh:",
+            "PLANNER REFRESH:",
             error.message
           );
-
         }
 
       },
       15000
     );
-
 }
 
 
 /* =========================================================
-   APP
-========================================================= */
+   SHOW APP
+   ========================================================= */
 
-function showApp(){
+function showApp() {
 
-  $("authScreen")
-    .classList
-    .add("hidden");
+  const authScreen =
+    $("authScreen");
 
+  const app =
+    $("app");
 
-  $("app")
-    .classList
-    .remove("hidden");
+  if (authScreen) {
+    authScreen.classList.add(
+      "hidden"
+    );
+  }
 
+  if (app) {
+    app.classList.remove(
+      "hidden"
+    );
+  }
 
   switchView(
     "calendarView"
   );
-
 }
 
 
-function showAuthError(
-  message
-){
+/* =========================================================
+   AUTH ERROR
+   ========================================================= */
+
+function showAuthError(message) {
 
   const card =
     document.querySelector(
       ".auth-card"
     );
 
+  if (!card) {
+    return;
+  }
 
   card.innerHTML = `
-
     <div class="logo-mark">
       !
     </div>
@@ -905,60 +923,15 @@ function showAuthError(
     <p>
       ${esc(message)}
     </p>
-
   `;
-
 }
 
 
 /* =========================================================
-   НАВИГАЦИЯ
-========================================================= */
+   RENDER EVERYTHING
+   ========================================================= */
 
-function switchView(
-  viewId
-){
-
-  document
-    .querySelectorAll(
-      ".view"
-    )
-    .forEach(
-      view => {
-
-        view.classList.toggle(
-          "active",
-          view.id === viewId
-        );
-
-      }
-    );
-
-
-  document
-    .querySelectorAll(
-      ".nav-item"
-    )
-    .forEach(
-      button => {
-
-        button.classList.toggle(
-          "active",
-          button.dataset.view ===
-          viewId
-        );
-
-      }
-    );
-
-}
-
-
-/* =========================================================
-   РЕНДЕР
-========================================================= */
-
-function renderEverything(){
+function renderEverything() {
 
   renderCalendar();
 
@@ -969,15 +942,57 @@ function renderEverything(){
   renderTeam();
 
   renderAnalytics();
-
 }
 
 
 /* =========================================================
-   КАЛЕНДАРЬ
-========================================================= */
+   SWITCH VIEW
+   ========================================================= */
 
-function renderCalendar(){
+function switchView(viewId) {
+
+  document
+    .querySelectorAll(".view")
+    .forEach(view => {
+
+      view.classList.toggle(
+        "active",
+        view.id === viewId
+      );
+
+    });
+
+
+  document
+    .querySelectorAll(".nav-item")
+    .forEach(button => {
+
+      button.classList.toggle(
+        "active",
+        button.dataset.view ===
+        viewId
+      );
+
+    });
+
+
+  /*
+    Always return to the top
+    when switching screens.
+  */
+
+  window.scrollTo({
+    top: 0,
+    behavior: "instant"
+  });
+}
+
+
+/* =========================================================
+   CALENDAR
+   ========================================================= */
+
+function renderCalendar() {
 
   const year =
     currentMonth.getFullYear();
@@ -985,22 +1000,26 @@ function renderCalendar(){
   const month =
     currentMonth.getMonth();
 
-
   const grid =
     $("calendarGrid");
 
 
-  if(!grid){
+  if (!grid) {
     return;
   }
 
 
-  $("monthLabel")
-    .textContent =
+  const monthLabel =
+    $("monthLabel");
+
+
+  if (monthLabel) {
+    monthLabel.textContent =
       `${monthNames[month]} ${year}`;
+  }
 
 
-  const first =
+  const firstDay =
     new Date(
       year,
       month,
@@ -1016,10 +1035,14 @@ function renderCalendar(){
     ).getDate();
 
 
+  /*
+    Monday = 0
+    Sunday = 6
+  */
+
   const previousDays =
     (
-      first.getDay() +
-      6
+      firstDay.getDay() + 6
     ) % 7;
 
 
@@ -1032,18 +1055,17 @@ function renderCalendar(){
     ) * 7;
 
 
-  grid.innerHTML =
-    "";
+  grid.innerHTML = "";
 
 
-  for(
-    let i = 0;
-    i < totalCells;
-    i++
-  ){
+  for (
+    let index = 0;
+    index < totalCells;
+    index++
+  ) {
 
     const day =
-      i -
+      index -
       previousDays +
       1;
 
@@ -1062,60 +1084,73 @@ function renderCalendar(){
     let shownDay;
 
 
-    if(day < 1){
+    /*
+      Previous month
+    */
 
-      const d =
+    if (day < 1) {
+
+      const dateObject =
         new Date(
           year,
           month,
           day
         );
 
-
       date =
-        toISO(d);
+        toISO(
+          dateObject
+        );
 
       shownDay =
-        d.getDate();
-
+        dateObject.getDate();
 
       cell.classList.add(
         "muted"
       );
-
     }
-    else if(
+
+
+    /*
+      Next month
+    */
+
+    else if (
       day > daysInMonth
-    ){
+    ) {
 
-      const d =
+      const dateObject =
         new Date(
           year,
           month,
           day
         );
 
-
       date =
-        toISO(d);
+        toISO(
+          dateObject
+        );
 
       shownDay =
-        d.getDate();
-
+        dateObject.getDate();
 
       cell.classList.add(
         "muted"
       );
-
     }
-    else{
+
+
+    /*
+      Current month
+    */
+
+    else {
 
       date =
-        `${year}-${pad(month+1)}-${pad(day)}`;
+        `${year}-${pad(month + 1)}-${pad(day)}`;
 
       shownDay =
         day;
-
     }
 
 
@@ -1129,39 +1164,36 @@ function renderCalendar(){
 
 
     cell.innerHTML = `
-
       <div
-        class="day-number ${
-          isToday
-            ? "today"
-            : ""
-        }"
+        class="day-number ${isToday ? "today" : ""}"
       >
         ${shownDay}
       </div>
-
     `;
 
 
     /*
-      КЛИК ПО ЛЮБОЙ ЯЧЕЙКЕ
-      ОТКРЫВАЕТ ПОДРОБНОСТИ ДАТЫ.
+      Clicking anywhere
+      on a calendar day opens
+      the detailed day screen.
     */
 
     cell.addEventListener(
       "click",
       () =>
-        openDayDetails(
-          date
-        )
+        openDayDetails(date)
     );
 
 
-    const dayPubs =
+    /*
+      Publications for this day.
+    */
+
+    const dayPublications =
       publications
         .filter(
-          p =>
-            p.publication_date ===
+          publication =>
+            publication.publication_date ===
             date
         )
         .sort(
@@ -1170,97 +1202,87 @@ function renderCalendar(){
 
 
     /*
-      В ячейке показываем
-      максимум 3 публикации.
+      Show maximum 3
+      directly in calendar.
     */
 
-    dayPubs
-      .slice(
-        0,
-        3
-      )
-      .forEach(
-        publication => {
+    dayPublications
+      .slice(0, 3)
+      .forEach(publication => {
 
-          const chip =
-            document.createElement(
-              "button"
+        const chip =
+          document.createElement(
+            "button"
+          );
+
+
+        chip.type =
+          "button";
+
+
+        chip.className =
+          `pub-chip ${platformClass(
+            publication.platform
+          )} ${
+            publication.status === "done"
+              ? "done"
+              : ""
+          }`;
+
+
+        chip.innerHTML = `
+          ${
+            publication.publication_time
+              ? `<span class="pub-time">
+                  ${esc(
+                    publication.publication_time
+                      .slice(0, 5)
+                  )}
+                </span>`
+              : ""
+          }
+
+          ${esc(
+            publication.title
+          )}
+        `;
+
+
+        chip.title =
+          `${publication.platform} · ${publication.format} · ${publication.title}`;
+
+
+        /*
+          Clicking a publication
+          opens its parent content.
+        */
+
+        chip.addEventListener(
+          "click",
+          event => {
+
+            event.stopPropagation();
+
+            openModal(
+              publication.content_id
             );
+          }
+        );
 
 
-          chip.type =
-            "button";
+        cell.appendChild(
+          chip
+        );
+      });
 
 
-          chip.className =
-            `
-              pub-chip
-              ${platformClass(
-                publication.platform
-              )}
-              ${
-                publication.status ===
-                "done"
-                  ? "done"
-                  : ""
-              }
-            `;
+    /*
+      More publications.
+    */
 
-
-          chip.innerHTML = `
-
-            <span class="pub-time">
-
-              ${
-                publication
-                  .publication_time
-                  ? esc(
-                      publication
-                        .publication_time
-                        .slice(0,5)
-                    )
-                  : ""
-              }
-
-            </span>
-
-            ${esc(
-              publication.title
-            )}
-
-          `;
-
-
-          chip.title =
-            `${publication.platform} · ${publication.format} · ${publication.title}`;
-
-
-          chip.addEventListener(
-            "click",
-            event => {
-
-              event.stopPropagation();
-
-
-              openModal(
-                publication.content_id
-              );
-
-            }
-          );
-
-
-          cell.appendChild(
-            chip
-          );
-
-        }
-      );
-
-
-    if(
-      dayPubs.length > 3
-    ){
+    if (
+      dayPublications.length > 3
+    ) {
 
       const more =
         document.createElement(
@@ -1278,7 +1300,7 @@ function renderCalendar(){
 
       more.textContent =
         `+ ещё ${
-          dayPubs.length - 3
+          dayPublications.length - 3
         }`;
 
 
@@ -1288,11 +1310,9 @@ function renderCalendar(){
 
           event.stopPropagation();
 
-
           openDayDetails(
             date
           );
-
         }
       );
 
@@ -1300,45 +1320,27 @@ function renderCalendar(){
       cell.appendChild(
         more
       );
-
     }
 
 
     grid.appendChild(
       cell
     );
-
   }
-
-}
-
-
-function toISO(
-  date
-){
-
-  return (
-    `${date.getFullYear()}-` +
-    `${pad(date.getMonth()+1)}-` +
-    `${pad(date.getDate())}`
-  );
-
 }
 
 
 /* =========================================================
-   ДЕНЬ
-========================================================= */
+   OPEN DAY DETAILS
+   ========================================================= */
 
-function openDayDetails(
-  date
-){
+function openDayDetails(date) {
 
-  const pubs =
+  const publicationsForDay =
     publications
       .filter(
-        p =>
-          p.publication_date ===
+        publication =>
+          publication.publication_date ===
           date
       )
       .sort(
@@ -1346,352 +1348,169 @@ function openDayDetails(
       );
 
 
-  const d =
+  const dateObject =
     new Date(
       `${date}T12:00:00`
     );
 
 
-  $("dayModalEyebrow")
-    .textContent =
-      `${d.getDate()} ${
-        shortMonths[
-          d.getMonth()
-        ]
-      } ${d.getFullYear()}`;
+  const eyebrow =
+    $("dayModalEyebrow");
 
+  const title =
+    $("dayModalTitle");
 
-  $("dayModalTitle")
-    .textContent =
-      pubs.length
-        ? `${pubs.length} ${
-            plural(
-              pubs.length,
-              "публикация",
-              "публикации",
-              "публикаций"
-            )
-          }`
-        : "Пока пусто";
+  const subtitle =
+    $("dayModalSubtitle");
 
+  const addButton =
+    $("addPublicationForDay");
 
-  $("dayModalSubtitle")
-    .textContent =
-      pubs.length
-        ? "Расписание публикаций на эту дату"
-        : "На эту дату ещё ничего не запланировано";
-
-
-  $("addPublicationForDay")
-    .dataset.date =
-      date;
-
-
-  const box =
+  const list =
     $("dayPublicationList");
 
 
-  if(!pubs.length){
+  if (!eyebrow ||
+      !title ||
+      !subtitle ||
+      !addButton ||
+      !list) {
+    return;
+  }
 
-    box.innerHTML = `
 
+  eyebrow.textContent =
+    `${dateObject.getDate()} ${
+      shortMonths[
+        dateObject.getMonth()
+      ]
+    } ${
+      dateObject.getFullYear()
+    }`;
+
+
+  title.textContent =
+    publicationsForDay.length
+      ? `${publicationsForDay.length} ${
+          plural(
+            publicationsForDay.length,
+            "публикация",
+            "публикации",
+            "публикаций"
+          )
+        }`
+      : "Пока пусто";
+
+
+  subtitle.textContent =
+    publicationsForDay.length
+      ? "Расписание публикаций на эту дату"
+      : "На эту дату ещё ничего не запланировано";
+
+
+  addButton.dataset.date =
+    date;
+
+
+  /*
+    Empty day
+  */
+
+  if (!publicationsForDay.length) {
+
+    list.innerHTML = `
       <div class="empty">
         Добавь первую публикацию на этот день.
       </div>
-
     `;
 
   }
-  else{
 
-    box.innerHTML =
-      pubs
-        .map(
-          p => {
 
-            const assignees =
-              publicationAssignees(
-                p.id
-              );
+  /*
+    Day with publications
+  */
 
+  else {
 
-            const avatars =
-              assignees
-                .slice(0,3)
-                .map(
-                  avatarHtml
-                )
-                .join("");
-
-
-            return `
-
-              <button
-                type="button"
-                class="day-publication"
-                data-day-pub="${p.id}"
-              >
-
-                <div class="day-pub-time">
-
-                  ${
-                    p.publication_time
-                      ? esc(
-                          p.publication_time
-                            .slice(0,5)
-                        )
-                      : "—"
-                  }
-
-                </div>
-
-
-                <span
-                  class="platform-dot ${
-                    platformClass(
-                      p.platform
-                    )
-                  }"
-                ></span>
-
-
-                <div class="day-pub-main">
-
-                  <div class="day-pub-title">
-                    ${esc(p.title)}
-                  </div>
-
-                  <div class="day-pub-meta">
-                    ${esc(p.platform)}
-                    ·
-                    ${esc(p.format)}
-                  </div>
-
-                </div>
-
-
-                <div class="assignee-mini">
-                  ${avatars}
-                </div>
-
-
-                <span class="chevron">
-                  ›
-                </span>
-
-              </button>
-
-            `;
-
-          }
-        )
-        .join("");
-
-
-    box
-      .querySelectorAll(
-        "[data-day-pub]"
-      )
-      .forEach(
-        button => {
-
-          button.addEventListener(
-            "click",
-            () => {
-
-              const p =
-                publications.find(
-                  x =>
-                    x.id ===
-                    button.dataset.dayPub
-                );
-
-
-              closeDayDetails();
-
-
-              if(p){
-
-                openModal(
-                  p.content_id
-                );
-
-              }
-
-            }
-          );
-
-        }
-      );
-
-  }
-
-
-  $("dayModal")
-    .classList
-    .remove("hidden");
-
-}
-
-
-function closeDayDetails(){
-
-  $("dayModal")
-    .classList
-    .add("hidden");
-
-}
-
-
-/* =========================================================
-   БЛИЖАЙШИЕ
-========================================================= */
-
-function renderUpcoming(){
-
-  const now =
-    new Date();
-
-
-  const upcoming =
-    publications
-      .slice()
-      .sort(
-        sortPublication
-      )
-      .filter(
-        p => {
-
-          const dt =
-            p.publication_time
-
-              ? new Date(
-                  `${p.publication_date}T${p.publication_time}`
-                )
-
-              : new Date(
-                  `${p.publication_date}T23:59:00`
-                );
-
-
-          return dt >= now;
-
-        }
-      )
-      .slice(
-        0,
-        6
-      );
-
-
-  const box =
-    $("upcomingList");
-
-
-  if(
-    !upcoming.length
-  ){
-
-    box.innerHTML = `
-
-      <div class="empty">
-        Пока нет запланированных публикаций.
-      </div>
-
-    `;
-
-    return;
-
-  }
-
-
-  box.innerHTML =
-    upcoming
-      .map(
-        p => {
+    list.innerHTML =
+      publicationsForDay
+        .map(publication => {
 
           const assignees =
             publicationAssignees(
-              p.id
-            )
-              .slice(0,3);
+              publication.id
+            );
 
 
           const avatars =
             assignees
-              .map(
-                avatarHtml
+              .slice(0, 3)
+              .map(member =>
+                avatarHtml(member)
               )
               .join("");
 
 
           return `
-
             <button
-              class="upcoming-card"
-              data-pub="${p.id}"
               type="button"
+              class="day-publication"
+              data-day-pub="${publication.id}"
             >
 
-              <div class="date-box">
-
-                <strong>
-                  ${p.publication_date.slice(8)}
-                </strong>
-
-                <span>
-                  ${
-                    shortMonths[
-                      Number(
-                        p.publication_date
-                          .slice(5,7)
-                      ) - 1
-                    ]
-                  }
-                </span>
-
+              <div class="day-pub-time">
+                ${
+                  publication.publication_time
+                    ? esc(
+                        publication
+                          .publication_time
+                          .slice(0, 5)
+                      )
+                    : "—"
+                }
               </div>
 
 
               <span
                 class="platform-dot ${
                   platformClass(
-                    p.platform
+                    publication.platform
                   )
                 }"
               ></span>
 
 
-              <div class="upcoming-main">
+              <div class="day-pub-main">
 
-                <div class="upcoming-title">
-                  ${esc(p.title)}
+                <div class="day-pub-title">
+                  ${esc(
+                    publication.title
+                  )}
                 </div>
 
-                <div class="upcoming-meta">
-
-                  ${esc(p.platform)}
+                <div class="day-pub-meta">
+                  ${esc(
+                    publication.platform
+                  )}
                   ·
-                  ${esc(p.format)}
-
-                  ${
-                    p.publication_time
-                      ? " · " +
-                        esc(
-                          p.publication_time
-                            .slice(0,5)
-                        )
-                      : ""
-                  }
-
+                  ${esc(
+                    publication.format
+                  )}
                 </div>
 
               </div>
 
 
-              <div class="assignee-mini">
-                ${avatars}
-              </div>
+              ${
+                avatars
+                  ? `
+                    <div class="assignee-mini">
+                      ${avatars}
+                    </div>
+                  `
+                  : ""
+              }
 
 
               <span class="chevron">
@@ -1699,11 +1518,298 @@ function renderUpcoming(){
               </span>
 
             </button>
-
           `;
+        })
+        .join("");
 
-        }
+
+    /*
+      Open publication/content.
+    */
+
+    list
+      .querySelectorAll(
+        "[data-day-pub]"
       )
+      .forEach(button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            const publication =
+              publications.find(
+                item =>
+                  item.id ===
+                  button.dataset.dayPub
+              );
+
+
+            closeDayDetails();
+
+
+            if (publication) {
+
+              openModal(
+                publication.content_id
+              );
+            }
+          }
+        );
+      });
+  }
+
+
+  /*
+    Open modal.
+  */
+
+  openDayModal();
+}
+
+
+/* =========================================================
+   DAY MODAL OPEN
+   ========================================================= */
+
+function openDayModal() {
+
+  const modal =
+    $("dayModal");
+
+
+  if (!modal) {
+    return;
+  }
+
+
+  modal.classList.remove(
+    "hidden"
+  );
+
+
+  modal.setAttribute(
+    "aria-hidden",
+    "false"
+  );
+}
+
+
+/* =========================================================
+   DAY MODAL CLOSE
+   ========================================================= */
+
+function closeDayDetails() {
+
+  const modal =
+    $("dayModal");
+
+
+  if (!modal) {
+    return;
+  }
+
+
+  modal.classList.add(
+    "hidden"
+  );
+
+
+  modal.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+}
+
+
+/* =========================================================
+   PUBLICATION ASSIGNEES
+   ========================================================= */
+
+function publicationAssignees(
+  publicationId
+) {
+
+  return assigneeRows
+    .filter(
+      row =>
+        row.publication_id ===
+        publicationId
+    )
+    .map(
+      row =>
+        members.find(
+          member =>
+            member.id ===
+            row.user_id
+        )
+    )
+    .filter(Boolean);
+}
+
+
+/* =========================================================
+   UPCOMING
+   ========================================================= */
+
+function renderUpcoming() {
+
+  const box =
+    $("upcomingList");
+
+
+  if (!box) {
+    return;
+  }
+
+
+  const now =
+    new Date();
+
+
+  const upcoming =
+    [...publications]
+      .sort(
+        sortPublication
+      )
+      .filter(publication => {
+
+        const dateTime =
+          publication.publication_time
+            ? new Date(
+                `${publication.publication_date}T${publication.publication_time}`
+              )
+            : new Date(
+                `${publication.publication_date}T23:59:00`
+              );
+
+
+        return (
+          dateTime >= now &&
+          publication.status !== "done"
+        );
+      })
+      .slice(0, 6);
+
+
+  if (!upcoming.length) {
+
+    box.innerHTML = `
+      <div class="empty">
+        Пока нет ближайших публикаций.
+      </div>
+    `;
+
+    return;
+  }
+
+
+  box.innerHTML =
+    upcoming
+      .map(publication => {
+
+        const assignees =
+          publicationAssignees(
+            publication.id
+          ).slice(0, 3);
+
+
+        const avatars =
+          assignees
+            .map(member =>
+              avatarHtml(member)
+            )
+            .join("");
+
+
+        const month =
+          Number(
+            publication
+              .publication_date
+              .slice(5, 7)
+          ) - 1;
+
+
+        return `
+          <button
+            class="upcoming-card"
+            data-pub="${publication.id}"
+            type="button"
+          >
+
+            <div class="date-box">
+
+              <strong>
+                ${publication
+                  .publication_date
+                  .slice(8)}
+              </strong>
+
+              <span>
+                ${shortMonths[month]}
+              </span>
+
+            </div>
+
+
+            <span
+              class="platform-dot ${
+                platformClass(
+                  publication.platform
+                )
+              }"
+            ></span>
+
+
+            <div class="upcoming-main">
+
+              <div class="upcoming-title">
+                ${esc(
+                  publication.title
+                )}
+              </div>
+
+              <div class="upcoming-meta">
+                ${esc(
+                  publication.platform
+                )}
+                ·
+                ${esc(
+                  publication.format
+                )}
+
+                ${
+                  publication.publication_time
+                    ? ` · ${esc(
+                        publication
+                          .publication_time
+                          .slice(0, 5)
+                      )}`
+                    : ""
+                }
+              </div>
+
+            </div>
+
+
+            ${
+              avatars
+                ? `
+                  <div class="assignee-mini">
+                    ${avatars}
+                  </div>
+                `
+                : ""
+            }
+
+
+            <span class="chevron">
+              ›
+            </span>
+
+          </button>
+        `;
+      })
       .join("");
 
 
@@ -1711,49 +1817,43 @@ function renderUpcoming(){
     .querySelectorAll(
       "[data-pub]"
     )
-    .forEach(
-      button => {
+    .forEach(button => {
 
-        button.addEventListener(
-          "click",
-          () => {
+      button.addEventListener(
+        "click",
+        () => {
 
-            const p =
-              publications.find(
-                x =>
-                  x.id ===
-                  button.dataset.pub
-              );
+          const publication =
+            publications.find(
+              item =>
+                item.id ===
+                button.dataset.pub
+            );
 
 
-            if(p){
+          if (publication) {
 
-              openModal(
-                p.content_id
-              );
-
-            }
-
+            openModal(
+              publication.content_id
+            );
           }
-        );
-
-      }
-    );
-
+        }
+      );
+    });
 }
 
 
 /* =========================================================
-   КОНТЕНТ
-========================================================= */
+   CONTENT LIST
+   ========================================================= */
 
-function renderContent(){
+function renderContent() {
 
   const box =
     $("contentList");
 
 
-  if(!box){
+  if (!box) {
     return;
   }
 
@@ -1761,8 +1861,7 @@ function renderContent(){
   const search =
     (
       $("contentSearch")
-        ?.value ||
-      ""
+        ?.value || ""
     )
       .trim()
       .toLowerCase();
@@ -1775,394 +1874,365 @@ function renderContent(){
 
 
   const filtered =
-    contents.filter(
-      content => {
+    contents.filter(content => {
 
-        const pubs =
-          publications.filter(
-            p =>
-              p.content_id ===
-              content.id
-          );
-
-
-        const text =
-          [
-            content.title || "",
-            content.description || "",
-            ...pubs.flatMap(
-              p => [
-                p.title,
-                p.platform,
-                p.format,
-                p.description || ""
-              ]
-            )
-          ]
-            .join(" ")
-            .toLowerCase();
-
-
-        return (
-          (!search ||
-            text.includes(search)) &&
-
-          (
-            platform === "all" ||
-            pubs.some(
-              p =>
-                p.platform ===
-                platform
-            )
-          )
+      const contentPublications =
+        publications.filter(
+          publication =>
+            publication.content_id ===
+            content.id
         );
 
-      }
-    );
+
+      const haystack = [
+        content.title || "",
+        content.description || "",
+
+        ...contentPublications.flatMap(
+          publication => [
+            publication.title || "",
+            publication.platform || "",
+            publication.format || "",
+            publication.description || ""
+          ]
+        )
+      ]
+        .join(" ")
+        .toLowerCase();
 
 
-  if(
-    !filtered.length
-  ){
+      const matchesSearch =
+        !search ||
+        haystack.includes(
+          search
+        );
+
+
+      const matchesPlatform =
+        platform === "all" ||
+        contentPublications.some(
+          publication =>
+            publication.platform ===
+            platform
+        );
+
+
+      return (
+        matchesSearch &&
+        matchesPlatform
+      );
+    });
+
+
+  if (!filtered.length) {
+
+    const message =
+      contents.length
+        ? "По выбранным фильтрам ничего не найдено."
+        : "Контента пока нет. Нажми «+ Контент», чтобы добавить.";
+
 
     box.innerHTML = `
-
       <div class="empty">
-
-        ${
-          contents.length
-            ? "По выбранным фильтрам ничего не найдено."
-            : "Контента пока нет. Нажми «+ Контент», чтобы добавить."
-        }
-
+        ${message}
       </div>
-
     `;
 
     return;
-
   }
 
 
   box.innerHTML =
     filtered
-      .map(
-        content => {
+      .map(content => {
 
-          const pubs =
-            publications
-              .filter(
-                p =>
-                  p.content_id ===
-                  content.id
+        const contentPublications =
+          publications
+            .filter(
+              publication =>
+                publication.content_id ===
+                content.id
+            )
+            .sort(
+              sortPublication
+            );
+
+
+        const firstDate =
+          contentPublications[0]
+            ?.publication_date
+            ? formatDate(
+                contentPublications[0]
+                  .publication_date
               )
-              .sort(
-                sortPublication
-              );
+            : "Без даты";
 
 
-          const firstDate =
-            pubs[0]
-              ?.publication_date
-              ? formatDate(
-                  pubs[0]
-                    .publication_date
-                )
-              : "Без даты";
+        return `
+          <article
+            class="content-card"
+            data-content="${content.id}"
+          >
 
+            <div class="content-card-head">
 
-          return `
+              <div class="content-main">
 
-            <article
-              class="content-card"
-              data-content="${content.id}"
-            >
-
-              <div
-                class="content-card-head"
-              >
-
-                <div
-                  class="content-main"
-                >
-
-                  <div
-                    class="content-title"
-                  >
-                    ${esc(
-                      content.title
-                    )}
-                  </div>
-
-
-                  ${
-                    content.description
-
-                      ? `
-                        <div
-                          class="content-description"
-                        >
-                          ${esc(
-                            content.description
-                          )}
-                        </div>
-                      `
-
-                      : ""
-                  }
-
-
-                  <div
-                    class="content-meta"
-                  >
-
-                    ${pubs.length}
-
-                    ${
-                      plural(
-                        pubs.length,
-                        "публикация",
-                        "публикации",
-                        "публикаций"
-                      )
-                    }
-
-                    ·
-
-                    ${esc(firstDate)}
-
-                  </div>
-
+                <div class="content-title">
+                  ${esc(
+                    content.title
+                  )}
                 </div>
 
 
-                <span class="chevron">
-                  ›
-                </span>
+                ${
+                  content.description
+                    ? `
+                      <div class="content-description">
+                        ${esc(
+                          content.description
+                        )}
+                      </div>
+                    `
+                    : ""
+                }
+
+
+                <div class="content-meta">
+
+                  ${
+                    contentPublications.length
+                  }
+
+                  ${
+                    plural(
+                      contentPublications.length,
+                      "публикация",
+                      "публикации",
+                      "публикаций"
+                    )
+                  }
+
+                  ·
+
+                  ${esc(
+                    firstDate
+                  )}
+
+                </div>
 
               </div>
 
 
-              <div
-                class="content-publications"
-              >
+              <span class="chevron">
+                ›
+              </span>
 
-                ${
-                  pubs.length
-
-                    ? pubs
-                        .map(
-                          p => `
-
-                            <button
-                              class="content-publication"
-                              data-publication-id="${p.id}"
-                              type="button"
-                            >
-
-                              <span
-                                class="platform-dot ${
-                                  platformClass(
-                                    p.platform
-                                  )
-                                }"
-                              ></span>
+            </div>
 
 
-                              <div
-                                class="content-pub-main"
-                              >
+            <div class="content-publications">
 
-                                <div
-                                  class="content-pub-title"
-                                >
-                                  ${esc(
-                                    p.title
-                                  )}
-                                </div>
+              ${
+                contentPublications.length
+
+                  ? contentPublications
+                      .map(publication => {
+
+                        const statusClass =
+                          publication.status ===
+                          "progress"
+                            ? "progress"
+                            : publication.status ===
+                              "done"
+                              ? "done"
+                              : "";
 
 
-                                <div
-                                  class="content-pub-meta"
-                                >
+                        return `
+                          <button
+                            class="content-publication"
+                            data-publication-id="${publication.id}"
+                            type="button"
+                          >
 
-                                  ${esc(
-                                    p.platform
-                                  )}
+                            <span
+                              class="platform-dot ${
+                                platformClass(
+                                  publication.platform
+                                )
+                              }"
+                            ></span>
 
-                                  ·
 
-                                  ${esc(
-                                    p.format
-                                  )}
+                            <div class="content-pub-main">
 
-                                  ·
-
-                                  ${formatDate(
-                                    p.publication_date
-                                  )}
-
-                                  ${
-                                    p.publication_time
-                                      ? " · " +
-                                        esc(
-                                          p.publication_time
-                                            .slice(0,5)
-                                        )
-                                      : ""
-                                  }
-
-                                </div>
-
+                              <div class="content-pub-title">
+                                ${esc(
+                                  publication.title
+                                )}
                               </div>
 
 
-                              <span
-                                class="
-                                  status-pill
-                                  ${
-                                    p.status ===
-                                    "progress"
-                                      ? "progress"
-                                      : ""
-                                  }
-                                  ${
-                                    p.status ===
-                                    "done"
-                                      ? "done"
-                                      : ""
-                                  }
-                                "
-                              >
-                                ${statusLabel(
-                                  p.status
+                              <div class="content-pub-meta">
+
+                                ${esc(
+                                  publication.platform
                                 )}
-                              </span>
+
+                                ·
+
+                                ${esc(
+                                  publication.format
+                                )}
+
+                                ·
+
+                                ${formatDate(
+                                  publication.publication_date
+                                )}
+
+                                ${
+                                  publication.publication_time
+                                    ? ` · ${esc(
+                                        publication
+                                          .publication_time
+                                          .slice(0, 5)
+                                      )}`
+                                    : ""
+                                }
+
+                              </div>
+
+                            </div>
 
 
-                              <span
-                                class="chevron"
-                              >
-                                ›
-                              </span>
+                            <span
+                              class="status-pill ${statusClass}"
+                            >
+                              ${statusLabel(
+                                publication.status
+                              )}
+                            </span>
 
-                            </button>
 
-                          `
-                        )
-                        .join("")
+                            <span class="chevron">
+                              ›
+                            </span>
 
-                    : `
-                        <div
-                          class="empty"
-                          style="padding:18px"
-                        >
-                          Публикаций пока нет.
-                        </div>
-                      `
-                }
+                          </button>
+                        `;
+                      })
+                      .join("")
 
-              </div>
+                  : `
+                    <div
+                      class="empty"
+                      style="padding:18px"
+                    >
+                      Публикаций пока нет.
+                    </div>
+                  `
+              }
 
-            </article>
+            </div>
 
-          `;
-
-        }
-      )
+          </article>
+        `;
+      })
       .join("");
 
+
+  /*
+    Click on content card.
+  */
 
   box
     .querySelectorAll(
       "[data-content]"
     )
-    .forEach(
-      card => {
+    .forEach(card => {
 
-        card.addEventListener(
-          "click",
-          event => {
+      card.addEventListener(
+        "click",
+        event => {
 
-            if(
-              event.target.closest(
-                "[data-publication-id]"
-              )
-            ){
-
-              return;
-
-            }
-
-
-            openModal(
-              card.dataset.content
-            );
-
+          if (
+            event.target.closest(
+              "[data-publication-id]"
+            )
+          ) {
+            return;
           }
-        );
 
-      }
-    );
 
+          openModal(
+            card.dataset.content
+          );
+        }
+      );
+    });
+
+
+  /*
+    Click on specific publication.
+  */
 
   box
     .querySelectorAll(
       "[data-publication-id]"
     )
-    .forEach(
-      button => {
+    .forEach(button => {
 
-        button.addEventListener(
-          "click",
-          event => {
+      button.addEventListener(
+        "click",
+        event => {
 
-            event.stopPropagation();
-
-
-            const p =
-              publications.find(
-                x =>
-                  x.id ===
-                  button.dataset
-                    .publicationId
-              );
+          event.stopPropagation();
 
 
-            if(p){
+          const publication =
+            publications.find(
+              item =>
+                item.id ===
+                button.dataset.publicationId
+            );
 
-              openModal(
-                p.content_id
-              );
 
-            }
+          if (publication) {
 
+            openModal(
+              publication.content_id
+            );
           }
-        );
-
-      }
-    );
-
+        }
+      );
+    });
 }
 
 
 /* =========================================================
-   КОМАНДА
-========================================================= */
+   TEAM
+   ========================================================= */
 
-function renderTeam(){
+function renderTeam() {
 
   const box =
     $("teamList");
 
 
-  if(!box){
+  const count =
+    $("teamCount");
+
+
+  if (!box) {
     return;
   }
 
 
-  $("teamCount")
-    .textContent =
+  if (count) {
+
+    count.textContent =
       `${members.length} ${
         plural(
           members.length,
@@ -2171,33 +2241,39 @@ function renderTeam(){
           "участников"
         )
       }`;
+  }
 
 
-  if(
-    !members.length
-  ){
+  if (!members.length) {
 
     box.innerHTML = `
-
       <div class="empty">
-
-        Участники появятся здесь
-        после входа через Telegram.
-
+        Участники появятся здесь после входа через Telegram.
       </div>
-
     `;
 
     return;
-
   }
 
 
   box.innerHTML =
     members
-      .map(
-        member => `
+      .map(member => {
 
+        const name =
+          member.telegram_first_name ||
+          "Без имени";
+
+
+        const handle =
+          member.telegram_username
+            ? `@${esc(
+                member.telegram_username
+              )}`
+            : "Telegram";
+
+
+        return `
           <div class="team-card">
 
             ${avatarHtml(member)}
@@ -2205,70 +2281,49 @@ function renderTeam(){
             <div>
 
               <div class="team-name">
-
-                ${
-                  esc(
-                    member
-                      .telegram_first_name ||
-                    "Без имени"
-                  )
-                }
-
+                ${esc(name)}
               </div>
 
-
               <div class="team-handle">
-
-                ${
-                  member.telegram_username
-                    ? "@" +
-                      esc(
-                        member.telegram_username
-                      )
-                    : "Telegram"
-                }
-
+                ${handle}
               </div>
 
             </div>
 
           </div>
-
-        `
-      )
+        `;
+      })
       .join("");
-
 }
 
 
 /* =========================================================
-   АНАЛИТИКА
-========================================================= */
+   ANALYTICS
+   ========================================================= */
 
-function renderAnalytics(){
+function renderAnalytics() {
 
   const list =
     analyticsPeriod();
 
 
-  $("statTotal")
-    .textContent =
+  const total =
+    $("statTotal");
+
+
+  if (total) {
+    total.textContent =
       list.length;
+  }
 
 
   const days =
     activePeriod === "week"
-
       ? 7
-
       : activePeriod === "month"
-
         ? 30
-
         : activePeriod === "3months"
-
           ? 90
-
           : Math.max(
               1,
               daysBetween(
@@ -2278,14 +2333,23 @@ function renderAnalytics(){
             );
 
 
-  $("statWeek")
-    .textContent =
+  const average =
+    $("statWeek");
+
+
+  if (average) {
+
+    average.textContent =
       (
-        list.length /
-        days *
+        (list.length / days) *
         7
       ).toFixed(1);
+  }
 
+
+  /*
+    Social networks
+  */
 
   renderBars(
     "platformStats",
@@ -2296,6 +2360,10 @@ function renderAnalytics(){
   );
 
 
+  /*
+    Formats
+  */
+
   renderBars(
     "formatStats",
     countBy(
@@ -2305,19 +2373,23 @@ function renderAnalytics(){
   );
 
 
+  /*
+    Weekdays
+  */
+
   const weekdays = {};
 
 
-  list.forEach(
-    p => {
+  list.forEach(publication => {
 
-      const d =
-        new Date(
-          `${p.publication_date}T12:00:00`
-        );
+    const date =
+      new Date(
+        `${publication.publication_date}T12:00:00`
+      );
 
 
-      const names = [
+    const name =
+      [
         "Вс",
         "Пн",
         "Вт",
@@ -2325,23 +2397,15 @@ function renderAnalytics(){
         "Чт",
         "Пт",
         "Сб"
-      ];
+      ][date.getDay()];
 
 
-      const key =
-        names[
-          d.getDay()
-        ];
-
-
-      weekdays[key] =
-        (
-          weekdays[key] ||
-          0
-        ) + 1;
-
-    }
-  );
+    weekdays[name] =
+      (
+        weekdays[name] ||
+        0
+      ) + 1;
+  });
 
 
   renderBars(
@@ -2350,94 +2414,90 @@ function renderAnalytics(){
   );
 
 
+  /*
+    Responsible workload
+  */
+
   const workload = {};
 
 
-  list.forEach(
-    publication => {
+  list.forEach(publication => {
 
-      publicationAssignees(
-        publication.id
-      )
-        .forEach(
-          member => {
+    publicationAssignees(
+      publication.id
+    ).forEach(member => {
 
-            const key =
-              member.telegram_first_name ||
-              member.telegram_username ||
-              "Участник";
+      const name =
+        member.telegram_first_name ||
+        member.telegram_username ||
+        "Участник";
 
 
-            workload[key] =
-              (
-                workload[key] ||
-                0
-              ) + 1;
-
-          }
-        );
-
-    }
-  );
+      workload[name] =
+        (
+          workload[name] ||
+          0
+        ) + 1;
+    });
+  });
 
 
   renderBars(
     "assigneeStats",
     workload
   );
-
 }
 
 
-function analyticsPeriod(){
+/* =========================================================
+   ANALYTICS PERIOD
+   ========================================================= */
+
+function analyticsPeriod() {
 
   const now =
     new Date();
 
 
-  let from =
-    null;
+  let from = null;
 
 
-  if(
+  if (
     activePeriod ===
     "week"
-  ){
+  ) {
 
     from =
       new Date(
         now.getTime() -
         6 * 86400000
       );
-
   }
 
 
-  if(
+  if (
     activePeriod ===
     "month"
-  ){
+  ) {
 
     from =
       new Date(
         now.getTime() -
         29 * 86400000
       );
-
   }
 
 
-  if(
+  if (
     activePeriod ===
     "3months"
-  ){
+  ) {
 
     from =
       new Date(
         now.getTime() -
         89 * 86400000
       );
-
   }
 
 
@@ -2448,45 +2508,54 @@ function analyticsPeriod(){
 
 
   return publications.filter(
-    p => {
+    publication => {
 
-      const d =
+      const date =
         new Date(
-          `${p.publication_date}T12:00:00`
+          `${publication.publication_date}T12:00:00`
         );
 
 
+      const inPeriod =
+        !from ||
+        date >= from;
+
+
+      const inPlatform =
+        platform === "all" ||
+        publication.platform ===
+        platform;
+
+
       return (
-
-        (!from || d >= from) &&
-
-        (
-          platform === "all" ||
-          p.platform === platform
-        )
-
+        inPeriod &&
+        inPlatform
       );
-
     }
   );
-
 }
 
+
+/* =========================================================
+   COUNT BY
+   ========================================================= */
 
 function countBy(
   list,
   key
-){
+) {
 
   return list.reduce(
-    (
-      result,
-      item
-    ) => {
+    (result, item) => {
 
-      result[item[key]] =
+      const value =
+        item[key] ||
+        "Другое";
+
+
+      result[value] =
         (
-          result[item[key]] ||
+          result[value] ||
           0
         ) + 1;
 
@@ -2496,33 +2565,34 @@ function countBy(
     },
     {}
   );
-
 }
 
 
+/* =========================================================
+   ANALYTICS BARS
+   ========================================================= */
+
 function renderBars(
   id,
-  data
-){
+  object
+) {
 
   const box =
     $(id);
 
 
-  if(!box){
+  if (!box) {
     return;
   }
 
 
   const entries =
     Object.entries(
-      data
-    )
-      .sort(
-        (a,b) =>
-          b[1] -
-          a[1]
-      );
+      object
+    ).sort(
+      (a, b) =>
+        b[1] - a[1]
+    );
 
 
   const max =
@@ -2530,38 +2600,28 @@ function renderBars(
     1;
 
 
-  if(
-    !entries.length
-  ){
+  if (!entries.length) {
 
     box.innerHTML = `
-
       <div
         class="empty"
-        style="
-          padding:18px;
-          margin-top:12px
-        "
+        style="padding:18px;margin-top:12px"
       >
         Нет данных
       </div>
-
     `;
 
     return;
-
   }
 
 
   box.innerHTML = `
-
     <div class="bars">
 
       ${
         entries
           .map(
-            ([name,count]) => `
-
+            ([name, number]) => `
               <div class="bar-row">
 
                 <span>
@@ -2576,9 +2636,7 @@ function renderBars(
                     style="
                       width:${Math.max(
                         4,
-                        count /
-                        max *
-                        100
+                        number / max * 100
                       )}%
                     "
                   ></div>
@@ -2587,227 +2645,194 @@ function renderBars(
 
 
                 <strong>
-                  ${count}
+                  ${number}
                 </strong>
 
               </div>
-
             `
           )
           .join("")
       }
 
     </div>
-
   `;
-
 }
 
 
 /* =========================================================
-   СОРТИРОВКА
-========================================================= */
+   DATE HELPERS
+   ========================================================= */
 
-function sortPublication(
-  a,
-  b
-){
+function minDate(list) {
 
-  const aa =
-    `${a.publication_date}T${
-      a.publication_time ||
-      "23:59:59"
-    }`;
-
-
-  const bb =
-    `${b.publication_date}T${
-      b.publication_time ||
-      "23:59:59"
-    }`;
-
-
-  return aa.localeCompare(
-    bb
-  );
-
-}
-
-
-function minDate(
-  list
-){
-
-  if(!list.length){
+  if (!list.length) {
     return isoToday();
   }
 
 
   return list.reduce(
-    (a,p) =>
-      a < p.publication_date
-        ? a
-        : p.publication_date,
+    (result, item) =>
+      result <
+      item.publication_date
+        ? result
+        : item.publication_date,
+
     list[0].publication_date
   );
-
 }
 
 
-function maxDate(
-  list
-){
+function maxDate(list) {
 
-  if(!list.length){
+  if (!list.length) {
     return isoToday();
   }
 
 
   return list.reduce(
-    (a,p) =>
-      a > p.publication_date
-        ? a
-        : p.publication_date,
+    (result, item) =>
+      result >
+      item.publication_date
+        ? result
+        : item.publication_date,
+
     list[0].publication_date
   );
-
 }
 
 
 function daysBetween(
-  a,
-  b
-){
+  start,
+  end
+) {
 
   return Math.round(
     (
-      new Date(b) -
-      new Date(a)
+      new Date(end) -
+      new Date(start)
     ) /
     86400000
   );
-
-}
-
-
-function plural(
-  n,
-  one,
-  few,
-  many
-){
-
-  const last =
-    n % 10;
-
-  const lastTwo =
-    n % 100;
-
-
-  if(
-    last === 1 &&
-    lastTwo !== 11
-  ){
-
-    return one;
-
-  }
-
-
-  if(
-    last >= 2 &&
-    last <= 4 &&
-    (
-      lastTwo < 12 ||
-      lastTwo > 14
-    )
-  ){
-
-    return few;
-
-  }
-
-
-  return many;
-
 }
 
 
 /* =========================================================
-   ОКНО КОНТЕНТА
-========================================================= */
+   OPEN CONTENT MODAL
+   ========================================================= */
 
 function openModal(
   contentId = null,
   presetDate = null
-){
+) {
 
-  $("modal")
-    .classList
-    .remove("hidden");
-
-
-  $("editingContentId")
-    .value =
-      contentId || "";
+  const modal =
+    $("modal");
 
 
-  $("modalTitle")
-    .textContent =
-      contentId
-        ? "Редактировать контент"
-        : "Новый контент";
+  if (!modal) {
+    return;
+  }
 
 
-  $("deleteContentBtn")
-    .classList
-    .toggle(
-      "hidden",
-      !contentId
-    );
+  const contentIdInput =
+    $("editingContentId");
 
 
-  $("contentTitle")
-    .value =
-      "";
-
-  $("contentDescription")
-    .value =
-      "";
-
-  $("publicationEditorList")
-    .innerHTML =
-      "";
+  const title =
+    $("modalTitle");
 
 
-  if(contentId){
+  const deleteButton =
+    $("deleteContentBtn");
+
+
+  const contentTitle =
+    $("contentTitle");
+
+
+  const contentDescription =
+    $("contentDescription");
+
+
+  const editorList =
+    $("publicationEditorList");
+
+
+  if (
+    !contentIdInput ||
+    !title ||
+    !deleteButton ||
+    !contentTitle ||
+    !contentDescription ||
+    !editorList
+  ) {
+    return;
+  }
+
+
+  /*
+    Reset editor
+  */
+
+  contentIdInput.value =
+    contentId || "";
+
+
+  title.textContent =
+    contentId
+      ? "Редактировать контент"
+      : "Новый контент";
+
+
+  deleteButton.classList.toggle(
+    "hidden",
+    !contentId
+  );
+
+
+  contentTitle.value =
+    "";
+
+
+  contentDescription.value =
+    "";
+
+
+  editorList.innerHTML =
+    "";
+
+
+  /*
+    Existing content
+  */
+
+  if (contentId) {
 
     const content =
       contents.find(
-        x =>
-          x.id ===
+        item =>
+          item.id ===
           contentId
       );
 
 
-    if(content){
+    if (content) {
 
-      $("contentTitle")
-        .value =
-          content.title || "";
+      contentTitle.value =
+        content.title ||
+        "";
 
 
-      $("contentDescription")
-        .value =
-          content.description || "";
-
+      contentDescription.value =
+        content.description ||
+        "";
     }
 
 
     publications
       .filter(
-        p =>
-          p.content_id ===
+        publication =>
+          publication.content_id ===
           contentId
       )
       .sort(
@@ -2820,129 +2845,208 @@ function openModal(
           )
       );
 
+
+    /*
+      Safety:
+      if content has no publications,
+      create one.
+    */
+
+    if (
+      !document.querySelector(
+        "[data-publication]"
+      )
+    ) {
+
+      addPublicationEditor(
+        null,
+        presetDate
+      );
+    }
+
   }
-  else{
+
+
+  /*
+    New content
+  */
+
+  else {
 
     addPublicationEditor(
       null,
       presetDate
     );
-
   }
 
-}
+
+  modal.classList.remove(
+    "hidden"
+  );
 
 
-function closeModal(){
-
-  $("modal")
-    .classList
-    .add("hidden");
-
+  modal.setAttribute(
+    "aria-hidden",
+    "false"
+  );
 }
 
 
 /* =========================================================
-   РЕДАКТОР ПУБЛИКАЦИИ
-========================================================= */
+   CLOSE CONTENT MODAL
+   ========================================================= */
+
+function closeModal() {
+
+  const modal =
+    $("modal");
+
+
+  if (!modal) {
+    return;
+  }
+
+
+  modal.classList.add(
+    "hidden"
+  );
+
+
+  modal.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+}
+
+
+/* =========================================================
+   ADD PUBLICATION EDITOR
+   ========================================================= */
 
 function addPublicationEditor(
   data = null,
   presetDate = null
-){
+) {
 
   const template =
     $("publicationTemplate");
 
 
+  const editorList =
+    $("publicationEditorList");
+
+
+  if (
+    !template ||
+    !editorList
+  ) {
+    return;
+  }
+
+
   const node =
     template.content
       .firstElementChild
-      .cloneNode(
-        true
-      );
+      .cloneNode(true);
 
 
   node.dataset.existingId =
-    data?.id || "";
+    data?.id ||
+    "";
 
 
-  const values = {
+  /*
+    Default values
+  */
 
-    title:"",
-
-    platform:"Telegram",
-
-    format:"Пост",
-
+  const defaults = {
+    title: "",
+    platform: "Telegram",
+    format: "Пост",
     date:
       presetDate ||
+      data?.publication_date ||
       isoToday(),
-
-    time:"",
-
-    status:"planned",
-
-    link:"",
-
-    description:""
-
+    time: "",
+    status: "planned",
+    link: "",
+    description: ""
   };
 
 
-  node
-    .querySelectorAll(
+  const fields =
+    node.querySelectorAll(
       "[data-field]"
-    )
-    .forEach(
-      field => {
-
-        const name =
-          field.dataset.field;
-
-
-        field.value =
-          data?.[name] ??
-          values[name];
-
-      }
     );
 
 
-  node
-    .querySelector(
+  fields.forEach(field => {
+
+    const fieldName =
+      field.dataset.field;
+
+
+    field.value =
+      data?.[fieldName] ??
+      defaults[fieldName] ??
+      "";
+  });
+
+
+  /*
+    Reminder values
+  */
+
+  const reminder24 =
+    node.querySelector(
       '[data-reminder="24h"]'
-    )
-    .checked =
+    );
+
+  const reminder3 =
+    node.querySelector(
+      '[data-reminder="3h"]'
+    );
+
+  const reminder1 =
+    node.querySelector(
+      '[data-reminder="1h"]'
+    );
+
+
+  if (reminder24) {
+
+    reminder24.checked =
       data
         ? !!data.reminder_24h
         : true;
+  }
 
 
-  node
-    .querySelector(
-      '[data-reminder="3h"]'
-    )
-    .checked =
+  if (reminder3) {
+
+    reminder3.checked =
       data
         ? !!data.reminder_3h
         : false;
+  }
 
 
-  node
-    .querySelector(
-      '[data-reminder="1h"]'
-    )
-    .checked =
+  if (reminder1) {
+
+    reminder1.checked =
       data
         ? !!data.reminder_1h
         : false;
+  }
 
+
+  /*
+    Selected responsible users
+  */
 
   const selected =
     new Set(
       data
-
         ? assigneeRows
             .filter(
               row =>
@@ -2953,7 +3057,6 @@ function addPublicationEditor(
               row =>
                 row.user_id
             )
-
         : []
     );
 
@@ -2962,26 +3065,47 @@ function addPublicationEditor(
     selected;
 
 
+  /*
+    Responsible picker
+  */
+
   const renderPicker =
     () => {
 
-      const search =
-        (
-          node
-            .querySelector(
-              "[data-search]"
-            )
-            .value ||
-          ""
-        )
-          .toLowerCase()
-          .trim();
+      const searchInput =
+        node.querySelector(
+          "[data-search]"
+        );
 
 
       const options =
         node.querySelector(
           "[data-options]"
         );
+
+
+      const selectedBox =
+        node.querySelector(
+          "[data-selected]"
+        );
+
+
+      if (
+        !searchInput ||
+        !options ||
+        !selectedBox
+      ) {
+        return;
+      }
+
+
+      const search =
+        (
+          searchInput.value ||
+          ""
+        )
+          .toLowerCase()
+          .trim();
 
 
       const filtered =
@@ -2993,8 +3117,7 @@ function addPublicationEditor(
                 member
                   .telegram_first_name ||
                 ""
-              )
-                .toLowerCase();
+              ).toLowerCase();
 
 
             const username =
@@ -3002,93 +3125,71 @@ function addPublicationEditor(
                 member
                   .telegram_username ||
                 ""
-              )
-                .toLowerCase();
+              ).toLowerCase();
 
 
             return (
-              !search ||
               name.includes(search) ||
               username.includes(search)
             );
-
           }
         );
 
 
-      options.innerHTML = `
+      /*
+        Options
+      */
 
-        <div class="assignee-options">
+      options.innerHTML =
+        filtered
+          .map(member => {
 
-          ${
-            filtered.length
+            const checked =
+              selected.has(
+                member.id
+              )
+                ? "checked"
+                : "";
 
-              ? filtered
-                  .map(
-                    member => `
 
-                      <label
-                        class="assignee-option"
-                      >
+            return `
+              <label
+                class="assignee-option"
+              >
 
-                        <input
-                          type="checkbox"
-                          data-user="${member.id}"
-                          ${
-                            selected.has(
-                              member.id
-                            )
-                              ? "checked"
-                              : ""
-                          }
-                        >
+                <input
+                  type="checkbox"
+                  data-user="${member.id}"
+                  ${checked}
+                >
 
-                        <span>
+                <span>
+                  ${esc(
+                    member
+                      .telegram_first_name ||
+                    "Без имени"
+                  )}
 
-                          ${
-                            esc(
-                              member
-                                .telegram_first_name ||
-                              "Без имени"
-                            )
-                          }
+                  ${
+                    member
+                      .telegram_username
+                      ? ` · @${esc(
+                          member
+                            .telegram_username
+                        )}`
+                      : ""
+                  }
+                </span>
 
-                          ${
-                            member
-                              .telegram_username
-                              ? " · @" +
-                                esc(
-                                  member
-                                    .telegram_username
-                                )
-                              : ""
-                          }
+              </label>
+            `;
+          })
+          .join("");
 
-                        </span>
 
-                      </label>
-
-                    `
-                  )
-                  .join("")
-
-              : `
-                  <div
-                    style="
-                      padding:10px 4px;
-                      color:#999;
-                      font-size:11px
-                    "
-                  >
-                    Никого не найдено
-                  </div>
-                `
-          }
-
-        </div>
-
-      `;
-
+      /*
+        Checkbox events
+      */
 
       options
         .querySelectorAll(
@@ -3101,53 +3202,46 @@ function addPublicationEditor(
               "change",
               () => {
 
-                if(
+                if (
                   checkbox.checked
-                ){
+                ) {
 
                   selected.add(
                     checkbox.dataset.user
                   );
 
-                }
-                else{
+                } else {
 
                   selected.delete(
                     checkbox.dataset.user
                   );
-
                 }
 
 
                 renderPicker();
-
               }
             );
-
           }
         );
 
 
-      const selectedBox =
-        node.querySelector(
-          "[data-selected]"
-        );
-
+      /*
+        Selected tags
+      */
 
       selectedBox.innerHTML =
         [...selected]
           .map(
-            id =>
+            userId =>
               members.find(
                 member =>
                   member.id ===
-                  id
+                  userId
               )
           )
           .filter(Boolean)
           .map(
             member => `
-
               <span
                 class="assignee-tag"
               >
@@ -3161,16 +3255,20 @@ function addPublicationEditor(
                 <button
                   type="button"
                   data-remove="${member.id}"
+                  aria-label="Удалить ответственного"
                 >
                   ×
                 </button>
 
               </span>
-
             `
           )
           .join("");
 
+
+      /*
+        Remove selected user
+      */
 
       selectedBox
         .querySelectorAll(
@@ -3179,146 +3277,154 @@ function addPublicationEditor(
         .forEach(
           button => {
 
-            button.onclick =
+            button.addEventListener(
+              "click",
               () => {
 
                 selected.delete(
                   button.dataset.remove
                 );
 
-
                 renderPicker();
-
-              };
-
+              }
+            );
           }
         );
-
     };
 
 
-  node
-    .querySelector(
+  /*
+    Search
+  */
+
+  const searchInput =
+    node.querySelector(
       "[data-search]"
-    )
-    .addEventListener(
-      "input",
-      renderPicker
     );
 
 
-  renderPicker();
+  if (searchInput) {
+
+    searchInput.addEventListener(
+      "input",
+      renderPicker
+    );
+  }
 
 
-  node
-    .querySelector(
+  /*
+    Remove publication
+  */
+
+  const removeButton =
+    node.querySelector(
       ".remove-publication"
-    )
-    .addEventListener(
+    );
+
+
+  if (removeButton) {
+
+    removeButton.addEventListener(
       "click",
       () => {
 
-        const count =
+        const allEditors =
           document.querySelectorAll(
             "[data-publication]"
-          ).length;
+          );
 
 
-        if(
-          count <= 1
-        ){
+        if (
+          allEditors.length <= 1
+        ) {
 
           toast(
-            "Должна остаться хотя бы одна публикация"
+            "Должна остаться хотя бы одна публикация."
           );
 
           return;
-
         }
 
 
         node.remove();
 
         renumberEditors();
-
       }
     );
+  }
 
 
-  $("publicationEditorList")
-    .appendChild(
-      node
-    );
+  /*
+    Render picker before insertion
+    so state is ready.
+  */
 
+  editorList.appendChild(
+    node
+  );
+
+
+  renderPicker();
 
   renumberEditors();
-
 }
 
 
-function renumberEditors(){
+/* =========================================================
+   RENUMBER PUBLICATIONS
+   ========================================================= */
+
+function renumberEditors() {
 
   document
     .querySelectorAll(
       "[data-publication] .pub-number"
     )
     .forEach(
-      (
-        element,
-        index
-      ) => {
+      (element, index) => {
 
         element.textContent =
           `Публикация ${
             index + 1
           }`;
-
       }
     );
-
 }
 
 
 /* =========================================================
-   СОХРАНЕНИЕ
-========================================================= */
+   SAVE CONTENT
+   ========================================================= */
 
-async function saveContent(
-  event
-){
+async function saveContent(event) {
 
   event.preventDefault();
 
 
-  if(
+  if (
     saving ||
     !currentProject
-  ){
-
+  ) {
     return;
-
   }
 
 
   const title =
     $("contentTitle")
-      .value
-      .trim();
+      ?.value
+      .trim() ||
+    "";
 
 
-  if(!title){
+  if (!title) {
 
     toast(
-      "Введите название контента"
+      "Введите название контента."
     );
 
-
-    $("contentTitle")
-      .focus();
-
+    $("contentTitle")?.focus();
 
     return;
-
   }
 
 
@@ -3330,29 +3436,32 @@ async function saveContent(
     ];
 
 
-  if(!nodes.length){
+  if (!nodes.length) {
 
     toast(
-      "Добавьте хотя бы одну публикацию"
+      "Добавьте хотя бы одну публикацию."
     );
 
-
     return;
-
   }
 
 
-  for(
+  /*
+    Validate publications.
+  */
+
+  for (
     const node of nodes
-  ){
+  ) {
 
     const pubTitle =
       node
         .querySelector(
           '[data-field="title"]'
         )
-        .value
-        .trim();
+        ?.value
+        .trim() ||
+      "";
 
 
     const pubDate =
@@ -3360,28 +3469,25 @@ async function saveContent(
         .querySelector(
           '[data-field="date"]'
         )
-        .value;
+        ?.value ||
+      "";
 
 
-    if(
+    if (
       !pubTitle ||
       !pubDate
-    ){
+    ) {
 
       toast(
-        "Заполните название и дату публикации"
+        "Заполните название и дату публикации."
       );
 
-
       return;
-
     }
-
   }
 
 
-  saving =
-    true;
+  saving = true;
 
 
   const submit =
@@ -3390,109 +3496,114 @@ async function saveContent(
     );
 
 
-  if(submit){
+  if (submit) {
 
     submit.disabled =
       true;
 
     submit.textContent =
       "Сохраняем…";
-
   }
 
 
-  try{
+  try {
 
     const contentId =
       $("editingContentId")
-        .value ||
+        ?.value ||
       null;
 
 
     let savedContent;
 
 
-    if(contentId){
+    /*
+      Existing content
+    */
+
+    if (contentId) {
 
       const {
         data,
         error
-      } =
-        await db
-          .from("content")
-          .update(
-            {
-              title,
-
-              description:
-                $("contentDescription")
-                  .value
-                  .trim()
-            }
-          )
-          .eq(
-            "id",
-            contentId
-          )
-          .select()
-          .single();
+      } = await db
+        .from("content")
+        .update({
+          title,
+          description:
+            $("contentDescription")
+              ?.value
+              .trim() ||
+            null
+        })
+        .eq(
+          "id",
+          contentId
+        )
+        .select()
+        .single();
 
 
-      if(error){
+      if (error) {
         throw error;
       }
 
 
       savedContent =
         data;
-
     }
-    else{
+
+
+    /*
+      New content
+    */
+
+    else {
 
       const {
         data,
         error
-      } =
-        await db
-          .from("content")
-          .insert(
-            {
-              project_id:
-                currentProject.id,
+      } = await db
+        .from("content")
+        .insert({
+          project_id:
+            currentProject.id,
 
-              title,
+          title,
 
-              description:
-                $("contentDescription")
-                  .value
-                  .trim(),
+          description:
+            $("contentDescription")
+              ?.value
+              .trim() ||
+            null,
 
-              created_by:
-                currentUser.id
-            }
-          )
-          .select()
-          .single();
+          created_by:
+            currentUser.id
+        })
+        .select()
+        .single();
 
 
-      if(error){
+      if (error) {
         throw error;
       }
 
 
       savedContent =
         data;
-
     }
 
 
-    const keptIds =
-      [];
+    /*
+      Save publications
+    */
+
+    const keptIds = [];
 
 
-    for(
+    for (
       const node of nodes
-    ){
+    ) {
 
       const get =
         field =>
@@ -3500,7 +3611,8 @@ async function saveContent(
             .querySelector(
               `[data-field="${field}"]`
             )
-            .value;
+            ?.value ||
+          "";
 
 
       const payload = {
@@ -3512,8 +3624,7 @@ async function saveContent(
           currentProject.id,
 
         title:
-          get("title")
-            .trim(),
+          get("title").trim(),
 
         platform:
           get("platform"),
@@ -3529,33 +3640,34 @@ async function saveContent(
           null,
 
         status:
-          get("status"),
+          get("status") ||
+          "planned",
 
         link:
-          get("link")
-            .trim() ||
+          get("link").trim() ||
           null,
 
         description:
-          get("description")
-            .trim() ||
+          get("description").trim() ||
           null,
 
         reminder_24h:
           node.querySelector(
             '[data-reminder="24h"]'
-          ).checked,
+          )?.checked ??
+          true,
 
         reminder_3h:
           node.querySelector(
             '[data-reminder="3h"]'
-          ).checked,
+          )?.checked ??
+          false,
 
         reminder_1h:
           node.querySelector(
             '[data-reminder="1h"]'
-          ).checked
-
+          )?.checked ??
+          false
       };
 
 
@@ -3564,48 +3676,48 @@ async function saveContent(
 
 
       let publication;
-
-
       let error;
 
 
-      if(existingId){
+      /*
+        Update
+      */
+
+      if (existingId) {
 
         ({
-          data:publication,
+          data: publication,
           error
-        } =
-          await db
-            .from("publications")
-            .update(
-              payload
-            )
-            .eq(
-              "id",
-              existingId
-            )
-            .select()
-            .single());
-
-      }
-      else{
-
-        ({
-          data:publication,
-          error
-        } =
-          await db
-            .from("publications")
-            .insert(
-              payload
-            )
-            .select()
-            .single());
-
+        } = await db
+          .from("publications")
+          .update(payload)
+          .eq(
+            "id",
+            existingId
+          )
+          .select()
+          .single());
       }
 
 
-      if(error){
+      /*
+        Insert
+      */
+
+      else {
+
+        ({
+          data: publication,
+          error
+        } = await db
+          .from("publications")
+          .insert(payload)
+          .select()
+          .single());
+      }
+
+
+      if (error) {
         throw error;
       }
 
@@ -3615,231 +3727,239 @@ async function saveContent(
       );
 
 
+      /*
+        Save responsible users
+      */
+
       const selected =
         [
-          ...node._selected
+          ...(
+            node._selected ||
+            new Set()
+          )
         ];
 
 
+      /*
+        Clear previous assignees.
+      */
+
       const {
-        error:
-          deleteAssigneesError
-      } =
-        await db
-          .from(
-            "publication_assignees"
-          )
-          .delete()
-          .eq(
-            "publication_id",
-            publication.id
-          );
+        error: deleteAssigneeError
+      } = await db
+        .from(
+          "publication_assignees"
+        )
+        .delete()
+        .eq(
+          "publication_id",
+          publication.id
+        );
 
 
-      if(
-        deleteAssigneesError
-      ){
-
-        throw deleteAssigneesError;
-
+      if (
+        deleteAssigneeError
+      ) {
+        throw deleteAssigneeError;
       }
 
 
-      if(selected.length){
+      /*
+        Insert selected users.
+      */
+
+      if (selected.length) {
 
         const rows =
           selected.map(
-            user_id => ({
+            userId => ({
               publication_id:
                 publication.id,
 
-              user_id
+              user_id:
+                userId
             })
           );
 
 
         const {
           error:
-            insertAssigneesError
-        } =
-          await db
-            .from(
-              "publication_assignees"
-            )
-            .insert(
-              rows
-            );
+            insertAssigneeError
+        } = await db
+          .from(
+            "publication_assignees"
+          )
+          .insert(rows);
 
 
-        if(
-          insertAssigneesError
-        ){
-
-          throw insertAssigneesError;
-
+        if (
+          insertAssigneeError
+        ) {
+          throw insertAssigneeError;
         }
-
       }
-
     }
 
 
-    if(contentId){
+    /*
+      Delete publications removed
+      from the editor.
+    */
+
+    if (contentId) {
 
       const removed =
         publications
           .filter(
-            p =>
-              p.content_id ===
-                contentId &&
-
+            publication =>
+              publication.content_id ===
+              contentId &&
               !keptIds.includes(
-                p.id
+                publication.id
               )
           )
           .map(
-            p =>
-              p.id
+            publication =>
+              publication.id
           );
 
 
-      if(
-        removed.length
-      ){
+      if (removed.length) {
 
         const {
           error
-        } =
-          await db
-            .from(
-              "publications"
-            )
-            .delete()
-            .in(
-              "id",
-              removed
-            );
+        } = await db
+          .from("publications")
+          .delete()
+          .in(
+            "id",
+            removed
+          );
 
 
-        if(error){
+        if (error) {
           throw error;
         }
-
       }
-
     }
 
 
-    closeModal();
+    /*
+      Finish
+    */
 
+    closeModal();
 
     await loadContent();
 
     renderEverything();
 
-
     toast(
       "Сохранено"
     );
 
-  }
-  finally{
+  } catch (error) {
 
-    saving =
-      false;
+    console.error(
+      "SAVE ERROR:",
+      error
+    );
+
+    toast(
+      error?.message ||
+      "Не удалось сохранить."
+    );
+
+  } finally {
+
+    saving = false;
 
 
-    if(submit){
+    if (submit) {
 
       submit.disabled =
         false;
 
       submit.textContent =
         "Сохранить";
-
     }
-
   }
-
 }
 
 
 /* =========================================================
-   УДАЛЕНИЕ
-========================================================= */
+   DELETE CONTENT
+   ========================================================= */
 
-async function deleteContent(){
+async function deleteContent() {
 
-  const id =
+  const contentId =
     $("editingContentId")
-      .value;
+      ?.value ||
+    "";
 
 
-  if(!id){
+  if (!contentId) {
     return;
   }
 
 
-  if(
-    !confirm(
+  const confirmed =
+    window.confirm(
       "Удалить этот контент и все его публикации?"
-    )
-  ){
+    );
 
+
+  if (!confirmed) {
     return;
-
   }
 
 
-  try{
+  try {
 
     const {
       error
-    } =
-      await db
-        .from("content")
-        .delete()
-        .eq(
-          "id",
-          id
-        );
+    } = await db
+      .from("content")
+      .delete()
+      .eq(
+        "id",
+        contentId
+      );
 
 
-    if(error){
+    if (error) {
       throw error;
     }
 
 
     closeModal();
 
-
     await loadContent();
 
     renderEverything();
 
-
     toast(
-      "Удалено"
+      "Контент удалён."
     );
 
-  }
-  catch(error){
+  } catch (error) {
 
-    console.error(error);
-
-    toast(
-      error.message ||
-      "Не удалось удалить"
+    console.error(
+      "DELETE ERROR:",
+      error
     );
 
+    toast(
+      "Не удалось удалить контент."
+    );
   }
-
 }
 
 
 /* =========================================================
-   СОБЫТИЯ
-========================================================= */
+   CALENDAR CONTROLS
+   ========================================================= */
 
 $("prevMonth")
   ?.addEventListener(
@@ -3853,9 +3973,7 @@ $("prevMonth")
           1
         );
 
-
       renderCalendar();
-
     }
   );
 
@@ -3872,9 +3990,7 @@ $("nextMonth")
           1
         );
 
-
       renderCalendar();
-
     }
   );
 
@@ -3887,12 +4003,14 @@ $("todayBtn")
       currentMonth =
         new Date();
 
-
       renderCalendar();
-
     }
   );
 
+
+/* =========================================================
+   ADD PUBLICATION FROM CALENDAR
+   ========================================================= */
 
 $("addPublicationTop")
   ?.addEventListener(
@@ -3903,10 +4021,13 @@ $("addPublicationTop")
         null,
         isoToday()
       );
-
     }
   );
 
+
+/* =========================================================
+   ADD CONTENT
+   ========================================================= */
 
 $("addContentInline")
   ?.addEventListener(
@@ -3914,10 +4035,13 @@ $("addContentInline")
     () => {
 
       openModal();
-
     }
   );
 
+
+/* =========================================================
+   ADD PUBLICATION INSIDE EDITOR
+   ========================================================= */
 
 $("addPublication")
   ?.addEventListener(
@@ -3925,10 +4049,13 @@ $("addPublication")
     () => {
 
       addPublicationEditor();
-
     }
   );
 
+
+/* =========================================================
+   ADD PUBLICATION FOR SELECTED DATE
+   ========================================================= */
 
 $("addPublicationForDay")
   ?.addEventListener(
@@ -3937,7 +4064,7 @@ $("addPublicationForDay")
 
       const date =
         $("addPublicationForDay")
-          .dataset
+          ?.dataset
           .date ||
         isoToday();
 
@@ -3949,10 +4076,13 @@ $("addPublicationForDay")
         null,
         date
       );
-
     }
   );
 
+
+/* =========================================================
+   CONTENT FORM
+   ========================================================= */
 
 $("contentForm")
   ?.addEventListener(
@@ -3961,98 +4091,135 @@ $("contentForm")
 
       saveContent(
         event
-      )
-        .catch(
-          error => {
+      ).catch(error => {
 
-            console.error(
-              error
-            );
-
-            toast(
-              error.message ||
-              "Ошибка сохранения"
-            );
-
-          }
+        console.error(
+          "FORM ERROR:",
+          error
         );
 
+        saving = false;
+
+        const submit =
+          document.querySelector(
+            '#contentForm button[type="submit"]'
+          );
+
+
+        if (submit) {
+
+          submit.disabled =
+            false;
+
+          submit.textContent =
+            "Сохранить";
+        }
+
+
+        toast(
+          error?.message ||
+          "Ошибка сохранения."
+        );
+      });
     }
   );
 
 
+/* =========================================================
+   DELETE CONTENT
+   ========================================================= */
+
 $("deleteContentBtn")
   ?.addEventListener(
     "click",
-    deleteContent
+    () => {
+
+      deleteContent();
+    }
   );
 
+
+/* =========================================================
+   CLOSE CONTENT MODAL
+   ========================================================= */
 
 document
   .querySelectorAll(
     "[data-close-modal]"
   )
   .forEach(
-    element =>
+    element => {
+
       element.addEventListener(
         "click",
         closeModal
-      )
+      );
+    }
   );
 
+
+/* =========================================================
+   CLOSE DAY MODAL
+   ========================================================= */
 
 document
   .querySelectorAll(
     "[data-close-day]"
   )
   .forEach(
-    element =>
+    element => {
+
       element.addEventListener(
         "click",
         closeDayDetails
-      )
+      );
+    }
   );
 
+
+/* =========================================================
+   NAVIGATION
+   ========================================================= */
 
 document
   .querySelectorAll(
     ".nav-item"
   )
   .forEach(
-    button =>
+    button => {
+
       button.addEventListener(
         "click",
-        () =>
+        () => {
+
           switchView(
             button.dataset.view
-          )
-      )
+          );
+        }
+      );
+    }
   );
 
+
+/* =========================================================
+   SHOW ALL CONTENT
+   ========================================================= */
 
 $("showAllContent")
   ?.addEventListener(
     "click",
-    () =>
+    () => {
+
       switchView(
         "contentView"
-      )
+      );
+    }
   );
 
 
-$("contentSearch")
-  ?.addEventListener(
-    "input",
-    renderContent
-  );
-
-
-$("contentPlatformFilter")
-  ?.addEventListener(
-    "change",
-    renderContent
-  );
-
+/* =========================================================
+   ANALYTICS FILTERS
+   ========================================================= */
 
 document
   .querySelectorAll(
@@ -4074,20 +4241,19 @@ document
               ".filter-btn"
             )
             .forEach(
-              item =>
+              item => {
+
                 item.classList.toggle(
                   "active",
-                  item ===
-                  button
-                )
+                  item === button
+                );
+              }
             );
 
 
           renderAnalytics();
-
         }
       );
-
     }
   );
 
@@ -4099,54 +4265,49 @@ $("analyticsPlatform")
   );
 
 
+/* =========================================================
+   CONTENT FILTERS
+   ========================================================= */
+
+$("contentSearch")
+  ?.addEventListener(
+    "input",
+    renderContent
+  );
+
+
+$("contentPlatformFilter")
+  ?.addEventListener(
+    "change",
+    renderContent
+  );
+
+
+/* =========================================================
+   ESCAPE
+   ========================================================= */
+
 document.addEventListener(
   "keydown",
   event => {
 
-    if(
-      event.key ===
+    if (
+      event.key !==
       "Escape"
-    ){
-
-      closeModal();
-
-      closeDayDetails();
-
+    ) {
+      return;
     }
 
+
+    closeModal();
+
+    closeDayDetails();
   }
 );
 
 
 /* =========================================================
-   ВСПОМОГАТЕЛЬНОЕ
-========================================================= */
-
-function publicationAssignees(
-  publicationId
-){
-
-  return assigneeRows
-    .filter(
-      row =>
-        row.publication_id ===
-        publicationId
-    )
-    .map(
-      row =>
-        members.find(
-          member =>
-            member.id ===
-            row.user_id
-        )
-    )
-    .filter(Boolean);
-
-}
-
-
-/* =========================================================
-   СТАРТ
-========================================================= */
+   START
+   ========================================================= */
 
 boot();

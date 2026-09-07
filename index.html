@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f7f7f5">
   <title>Media Planner</title>
-  <link rel="stylesheet" href="styles.css?v=final-5">
+  <link rel="stylesheet" href="styles.css?v=final-6">
 </head>
+
 <body>
 
   <div id="authScreen" class="auth-screen">
@@ -22,10 +23,8 @@
   <main id="app" class="app hidden">
 
     <header class="topbar">
-      <div class="brand">
-        <div class="brand-title">Media Planner</div>
-        <div class="brand-subtitle">Контент-план команды</div>
-      </div>
+      <div class="brand-title">Media Planner</div>
+      <div class="brand-subtitle">Контент-план команды</div>
     </header>
 
 
@@ -33,7 +32,7 @@
 
     <section id="calendarView" class="view active">
 
-      <div class="page-head calendar-page-head">
+      <div class="page-head calendar-head">
 
         <div>
           <h2>Календарь</h2>
@@ -44,9 +43,8 @@
 
           <button
             id="addPublicationTop"
-            class="primary-btn top-add-btn"
+            class="primary-btn plus-btn"
             type="button"
-            aria-label="Добавить публикацию"
           >
             +
           </button>
@@ -85,13 +83,13 @@
       <div class="calendar-card">
 
         <div class="weekdays">
-          <span>Пн</span>
-          <span>Вт</span>
-          <span>Ср</span>
-          <span>Чт</span>
-          <span>Пт</span>
-          <span>Сб</span>
-          <span>Вс</span>
+          <span>ПН</span>
+          <span>ВТ</span>
+          <span>СР</span>
+          <span>ЧТ</span>
+          <span>ПТ</span>
+          <span>СБ</span>
+          <span>ВС</span>
         </div>
 
         <div
@@ -135,7 +133,7 @@
 
         <div>
           <h2>Контент</h2>
-          <p>Все публикации команды</p>
+          <p>Контент-план команды</p>
         </div>
 
         <button
@@ -162,33 +160,13 @@
           id="contentPlatformFilter"
           class="platform-filter"
         >
-          <option value="all">
-            Все соцсети
-          </option>
-
-          <option value="Telegram">
-            Telegram
-          </option>
-
-          <option value="Instagram">
-            Instagram
-          </option>
-
-          <option value="VK">
-            VK
-          </option>
-
-          <option value="TikTok">
-            TikTok
-          </option>
-
-          <option value="YouTube">
-            YouTube
-          </option>
-
-          <option value="Другое">
-            Другое
-          </option>
+          <option value="all">Все соцсети</option>
+          <option>Telegram</option>
+          <option>Instagram</option>
+          <option>VK</option>
+          <option>TikTok</option>
+          <option>YouTube</option>
+          <option>Другое</option>
         </select>
 
       </div>
@@ -210,10 +188,7 @@
 
         <div>
           <h2>Команда</h2>
-
-          <p id="teamCount">
-            0 участников
-          </p>
+          <p id="teamCount">0 участников</p>
         </div>
 
       </div>
@@ -235,10 +210,7 @@
 
         <div>
           <h2>Анализ</h2>
-
-          <p>
-            Что происходит с контентом
-          </p>
+          <p>Понятная статистика контент-плана</p>
         </div>
 
       </div>
@@ -278,39 +250,17 @@
           Всё
         </button>
 
-
         <select
           id="analyticsPlatform"
           class="analytics-platform-filter"
         >
-          <option value="all">
-            Все соцсети
-          </option>
-
-          <option value="Telegram">
-            Telegram
-          </option>
-
-          <option value="Instagram">
-            Instagram
-          </option>
-
-          <option value="VK">
-            VK
-          </option>
-
-          <option value="TikTok">
-            TikTok
-          </option>
-
-          <option value="YouTube">
-            YouTube
-          </option>
-
-          <option value="Другое">
-            Другое
-          </option>
-
+          <option value="all">Все соцсети</option>
+          <option>Telegram</option>
+          <option>Instagram</option>
+          <option>VK</option>
+          <option>TikTok</option>
+          <option>YouTube</option>
+          <option>Другое</option>
         </select>
 
       </div>
@@ -319,80 +269,33 @@
       <div class="analytics-grid">
 
         <div class="stat-card">
-
-          <span>
-            Публикаций
-          </span>
-
-          <strong id="statTotal">
-            0
-          </strong>
-
+          <span>Публикаций</span>
+          <strong id="statTotal">0</strong>
         </div>
-
 
         <div class="stat-card">
-
-          <span>
-            В среднем / неделю
-          </span>
-
-          <strong id="statWeek">
-            0
-          </strong>
-
+          <span>В среднем / неделю</span>
+          <strong id="statWeek">0</strong>
         </div>
 
-
         <div class="analytics-card">
-
-          <h3>
-            По соцсетям
-          </h3>
-
-          <div
-            id="platformStats"
-          ></div>
-
+          <h3>По соцсетям</h3>
+          <div id="platformStats"></div>
         </div>
 
-
         <div class="analytics-card">
-
-          <h3>
-            По форматам
-          </h3>
-
-          <div
-            id="formatStats"
-          ></div>
-
+          <h3>По форматам</h3>
+          <div id="formatStats"></div>
         </div>
 
-
         <div class="analytics-card">
-
-          <h3>
-            По дням недели
-          </h3>
-
-          <div
-            id="weekdayStats"
-          ></div>
-
+          <h3>По дням недели</h3>
+          <div id="weekdayStats"></div>
         </div>
 
-
         <div class="analytics-card">
-
-          <h3>
-            Нагрузка по ответственным
-          </h3>
-
-          <div
-            id="assigneeStats"
-          ></div>
-
+          <h3>Нагрузка по ответственным</h3>
+          <div id="assigneeStats"></div>
         </div>
 
       </div>
@@ -402,7 +305,10 @@
 
     <!-- НИЖНЯЯ НАВИГАЦИЯ -->
 
-    <nav class="bottom-nav">
+    <nav
+      class="bottom-nav"
+      aria-label="Навигация"
+    >
 
       <button
         class="nav-item active"
@@ -413,7 +319,6 @@
         <small>Календарь</small>
       </button>
 
-
       <button
         class="nav-item"
         data-view="contentView"
@@ -423,7 +328,6 @@
         <small>Контент</small>
       </button>
 
-
       <button
         class="nav-item"
         data-view="teamView"
@@ -432,7 +336,6 @@
         <span>○</span>
         <small>Команда</small>
       </button>
-
 
       <button
         class="nav-item"
@@ -460,7 +363,6 @@
       data-close-day
     ></div>
 
-
     <div class="modal-sheet day-sheet">
 
       <div class="modal-head">
@@ -481,7 +383,6 @@
           </p>
 
         </div>
-
 
         <button
           class="close-btn"
@@ -525,8 +426,7 @@
       data-close-modal
     ></div>
 
-
-    <div class="modal-sheet">
+    <div class="modal-sheet editor-sheet">
 
       <div class="modal-head">
 
@@ -541,7 +441,6 @@
           </p>
 
         </div>
-
 
         <button
           class="close-btn"
@@ -665,7 +564,7 @@
       <div class="publication-editor-head">
 
         <div class="pub-number">
-          Публикация
+          Публикация 1
         </div>
 
         <button
@@ -682,9 +581,7 @@
 
         <label class="field full">
 
-          <span>
-            Название
-          </span>
+          <span>Название</span>
 
           <input
             data-field="title"
@@ -697,36 +594,15 @@
 
         <label class="field">
 
-          <span>
-            Соцсеть
-          </span>
+          <span>Соцсеть</span>
 
           <select data-field="platform">
-
-            <option>
-              Telegram
-            </option>
-
-            <option>
-              Instagram
-            </option>
-
-            <option>
-              VK
-            </option>
-
-            <option>
-              TikTok
-            </option>
-
-            <option>
-              YouTube
-            </option>
-
-            <option>
-              Другое
-            </option>
-
+            <option>Telegram</option>
+            <option>Instagram</option>
+            <option>VK</option>
+            <option>TikTok</option>
+            <option>YouTube</option>
+            <option>Другое</option>
           </select>
 
         </label>
@@ -734,40 +610,16 @@
 
         <label class="field">
 
-          <span>
-            Формат
-          </span>
+          <span>Формат</span>
 
           <select data-field="format">
-
-            <option>
-              Пост
-            </option>
-
-            <option>
-              Рилс
-            </option>
-
-            <option>
-              Сторис
-            </option>
-
-            <option>
-              Видео
-            </option>
-
-            <option>
-              Клип
-            </option>
-
-            <option>
-              Фото
-            </option>
-
-            <option>
-              Другое
-            </option>
-
+            <option>Пост</option>
+            <option>Рилс</option>
+            <option>Сторис</option>
+            <option>Видео</option>
+            <option>Клип</option>
+            <option>Фото</option>
+            <option>Другое</option>
           </select>
 
         </label>
@@ -775,9 +627,7 @@
 
         <label class="field">
 
-          <span>
-            Дата
-          </span>
+          <span>Дата</span>
 
           <input
             data-field="date"
@@ -790,9 +640,7 @@
 
         <label class="field">
 
-          <span>
-            Время
-          </span>
+          <span>Время</span>
 
           <input
             data-field="time"
@@ -804,12 +652,9 @@
 
         <label class="field">
 
-          <span>
-            Статус
-          </span>
+          <span>Статус</span>
 
           <select data-field="status">
-
             <option value="planned">
               Запланировано
             </option>
@@ -821,7 +666,6 @@
             <option value="done">
               Готово
             </option>
-
           </select>
 
         </label>
@@ -829,9 +673,7 @@
 
         <label class="field full">
 
-          <span>
-            Ссылка
-          </span>
+          <span>Ссылка</span>
 
           <input
             data-field="link"
@@ -844,9 +686,7 @@
 
         <label class="field full">
 
-          <span>
-            Комментарий
-          </span>
+          <span>Комментарий</span>
 
           <textarea
             data-field="description"
@@ -931,7 +771,7 @@
 
   <script
     defer
-    src="app.js?v=final-5"
+    src="app.js?v=final-6"
   ></script>
 
 </body>

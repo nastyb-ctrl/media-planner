@@ -2,13 +2,18 @@ const SUPABASE_URL = "https://vkvrwayzqrlsfsgjjwpy.supabase.co";
 const SUPABASE_KEY = "sb_publishable_-kj7hiC7uou3db2wpwFM_w_jgXQNpnb";
 
 const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
+
+const db = createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false
+    }
   }
-});
+);
 
 const tg = window.Telegram?.WebApp;
 
@@ -22,38 +27,47 @@ let publications = [];
 let assigneeRows = [];
 
 let currentMonth = new Date();
-let activePeriod = "month";
+let activePeriod = "week";
 
-let saving = false;
+let realtimeChannels = [];
 let memberPoll = null;
 let plannerPoll = null;
-let realtimeChannels = [];
 
-let selectedDayForNewPublication = null;
+let saving = false;
 
 
 /* =========================
    HELPERS
 ========================= */
 
-const $ = id => document.getElementById(id);
+const $ = id =>
+  document.getElementById(id);
 
-const esc = value =>
-  String(value ?? "").replace(/[&<>"']/g, c => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#039;"
-  }[c]));
 
-const pad = n => String(n).padStart(2, "0");
+const esc = (value = "") =>
+  String(value).replace(
+    /[&<>"']/g,
+    c => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    }[c])
+  );
+
+
+const pad = n =>
+  String(n).padStart(2, "0");
+
 
 const isoToday = () => {
+
   const d = new Date();
 
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
 
 const monthNames = [
   "январь",
@@ -70,6 +84,7 @@ const monthNames = [
   "декабрь"
 ];
 
+
 const shortMonths = [
   "янв",
   "фев",
@@ -85,121 +100,183 @@ const shortMonths = [
   "дек"
 ];
 
-function plural(n, one, few, many) {
-  const m = n % 10;
-  const t = n % 100;
-
-  return (
-    m === 1 && t !== 11
-      ? one
-      : m >= 2 &&
-        m <= 4 &&
-        (t < 12 || t > 14)
-        ? few
-        : many
-  );
-}
-
-function toISO(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function formatDate(date) {
-  if (!date) return "";
-
-  const [y, m, d] = date.split("-").map(Number);
-
-  return `${d} ${shortMonths[m - 1]}`;
-}
-
-function platformClass(platform) {
-  return String(platform || "")
-    .toLowerCase()
-    .replace(/[^a-zа-яё]/gi, "");
-}
-
-function statusLabel(status) {
-  if (status === "progress") return "В работе";
-  if (status === "done") return "Готово";
-
-  return "Запланировано";
-}
-
-function sortPublication(a, b) {
-  const aa =
-    `${a.publication_date}T${a.publication_time || "23:59:59"}`;
-
-  const bb =
-    `${b.publication_date}T${b.publication_time || "23:59:59"}`;
-
-  return aa.localeCompare(bb);
-}
-
-function toast(text) {
-  document.querySelector(".toast")?.remove();
-
-  const el = document.createElement("div");
-
-  el.className = "toast";
-
-  Object.assign(el.style, {
-    position: "fixed",
-    left: "50%",
-    bottom: "90px",
-    transform: "translateX(-50%)",
-    zIndex: "300",
-    padding: "11px 15px",
-    borderRadius: "12px",
-    background: "#171717",
-    color: "#fff",
-    fontSize: "13px",
-    boxShadow: "0 10px 30px rgba(0,0,0,.18)",
-    maxWidth: "calc(100vw - 32px)",
-    textAlign: "center"
-  });
-
-  el.textContent = text;
-
-  document.body.appendChild(el);
-
-  setTimeout(() => el.remove(), 2200);
-}
-
-function avatarHtml(profile) {
-  const name =
-    profile?.telegram_first_name ||
-    profile?.telegram_username ||
-    "?";
-
-  const initials = name.slice(0, 2).toUpperCase();
-
-  if (profile?.telegram_photo_url) {
-    return `
-      <img
-        class="team-avatar"
-        src="${esc(profile.telegram_photo_url)}"
-        alt=""
-      >
-    `;
-  }
-
-  return `
-    <div class="team-avatar-placeholder">
-      ${esc(initials)}
-    </div>
-  `;
-}
 
 function telegramInitData() {
   return tg?.initData || "";
 }
 
 
+function toast(text) {
+
+  const old =
+    document.querySelector(".toast");
+
+  if (old) old.remove();
+
+  const el =
+    document.createElement("div");
+
+  el.className = "toast";
+
+  el.textContent = text;
+
+  document.body.appendChild(el);
+
+  setTimeout(
+    () => el.remove(),
+    2200
+  );
+}
+
+
+function avatarHtml(
+  profile,
+  cls = ""
+) {
+
+  const name =
+    profile?.telegram_first_name ||
+    profile?.telegram_username ||
+    "?";
+
+  const initials =
+    name
+      .slice(0, 2)
+      .toUpperCase();
+
+
+  if (profile?.telegram_photo_url) {
+
+    return `
+      <div class="avatar ${cls}">
+        <img
+          src="${esc(profile.telegram_photo_url)}"
+          alt=""
+        >
+      </div>
+    `;
+  }
+
+
+  return `
+    <div class="avatar ${cls}">
+      ${esc(initials)}
+    </div>
+  `;
+}
+
+
+function platformClass(
+  platform
+) {
+
+  return String(platform || "")
+    .toLowerCase()
+    .replace(
+      /[^a-zа-яё]/gi,
+      ""
+    );
+}
+
+
+function formatDate(date) {
+
+  if (!date) return "";
+
+  const [
+    y,
+    m,
+    d
+  ] =
+    date
+      .split("-")
+      .map(Number);
+
+  return `${d} ${shortMonths[m - 1]}`;
+}
+
+
+function statusLabel(status) {
+
+  if (
+    status === "progress"
+  ) {
+    return "В работе";
+  }
+
+  if (
+    status === "done"
+  ) {
+    return "Готово";
+  }
+
+  return "Запланировано";
+}
+
+
+function sortPublication(a, b) {
+
+  const aa =
+    `${a.publication_date}T${
+      a.publication_time ||
+      "23:59:59"
+    }`;
+
+  const bb =
+    `${b.publication_date}T${
+      b.publication_time ||
+      "23:59:59"
+    }`;
+
+  return aa.localeCompare(bb);
+}
+
+
+function plural(
+  n,
+  one,
+  few,
+  many
+) {
+
+  const m = n % 10;
+  const t = n % 100;
+
+  if (
+    m === 1 &&
+    t !== 11
+  ) {
+    return one;
+  }
+
+  if (
+    m >= 2 &&
+    m <= 4 &&
+    (t < 12 || t > 14)
+  ) {
+    return few;
+  }
+
+  return many;
+}
+
+
+function toISO(date) {
+
+  return `${date.getFullYear()}-${pad(
+    date.getMonth() + 1
+  )}-${pad(
+    date.getDate()
+  )}`;
+}
+
+
 /* =========================
-   START
+   BOOT
 ========================= */
 
 async function boot() {
+
   try {
 
     tg?.ready();
@@ -207,42 +284,63 @@ async function boot() {
 
     tg?.enableClosingConfirmation?.();
 
-    tg?.setHeaderColor?.("#f7f7f5");
-    tg?.setBackgroundColor?.("#f7f7f5");
+    tg?.setHeaderColor?.(
+      "#f7f7f5"
+    );
+
+    tg?.setBackgroundColor?.(
+      "#f7f7f5"
+    );
 
 
     /* SUPABASE SESSION */
 
+    let sessionData =
+      await db.auth.getSession();
+
     let session =
-      (await db.auth.getSession()).data.session;
+      sessionData.data.session;
+
 
     if (!session) {
 
-      const { error } =
+      const {
+        error
+      } =
         await db.auth.signInAnonymously();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
       session =
-        (await db.auth.getSession()).data.session;
+        (
+          await db.auth.getSession()
+        ).data.session;
     }
 
-    currentUser = session?.user;
+
+    currentUser =
+      session?.user;
+
 
     if (!currentUser) {
+
       throw new Error(
         "Не удалось создать рабочую сессию."
       );
     }
 
 
-    /* TELEGRAM AUTH */
+    /* TELEGRAM */
 
-    const initData = telegramInitData();
+    const initData =
+      telegramInitData();
+
 
     if (initData) {
 
-      const { error } =
+      const result =
         await db.functions.invoke(
           "telegram-auth",
           {
@@ -252,7 +350,10 @@ async function boot() {
           }
         );
 
-      if (error) throw error;
+
+      if (result.error) {
+        throw result.error;
+      }
     }
 
 
@@ -272,7 +373,10 @@ async function boot() {
 
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "BOOT ERROR:",
+      error
+    );
 
     showAuthError(
       error?.message ||
@@ -291,18 +395,27 @@ async function loadProfile() {
   const {
     data,
     error
-  } = await db
-    .from("profiles")
-    .select("*")
-    .eq("id", currentUser.id)
-    .maybeSingle();
+  } =
+    await db
+      .from("profiles")
+      .select("*")
+      .eq(
+        "id",
+        currentUser.id
+      )
+      .maybeSingle();
 
-  if (error) throw error;
+
+  if (error) {
+    throw error;
+  }
+
 
   currentProfile =
     data || {
       id: currentUser.id,
-      telegram_first_name: "Участник"
+      telegram_first_name:
+        "Участник"
     };
 }
 
@@ -313,21 +426,115 @@ async function loadProfile() {
 
 async function ensureProject() {
 
-  const {
-    data,
-    error
-  } = await db.rpc(
-    "get_default_project_for_user"
+  /*
+   * Сначала пробуем новую RPC.
+   *
+   * Если Supabase отвечает:
+   * "Could not find the function..."
+   * или schema cache ещё не обновился,
+   * используем старую create_default_project().
+   */
+
+  let result =
+    await db.rpc(
+      "get_default_project_for_user"
+    );
+
+
+  if (
+    !result.error &&
+    result.data
+  ) {
+
+    currentProject =
+      Array.isArray(result.data)
+        ? result.data[0]
+        : result.data;
+
+    if (currentProject) {
+      return;
+    }
+  }
+
+
+  console.warn(
+    "get_default_project_for_user unavailable:",
+    result.error
   );
 
-  if (error) throw error;
+
+  /*
+   * FALLBACK
+   *
+   * Существующая функция
+   * create_default_project()
+   * создаёт/возвращает рабочий
+   * проект и добавляет пользователя.
+   */
+
+  const fallback =
+    await db.rpc(
+      "create_default_project"
+    );
+
+
+  if (
+    fallback.error
+  ) {
+
+    throw new Error(
+      fallback.error.message ||
+      "Не удалось получить проект команды."
+    );
+  }
+
 
   currentProject =
-    Array.isArray(data)
-      ? data[0]
-      : data;
+    Array.isArray(
+      fallback.data
+    )
+      ? fallback.data[0]
+      : fallback.data;
+
+
+  /*
+   * Иногда RPC возвращает только id.
+   * В таком случае пробуем найти проект.
+   */
+
+  if (
+    !currentProject ||
+    !currentProject.id
+  ) {
+
+    const {
+      data,
+      error
+    } =
+      await db
+        .from("projects")
+        .select("*")
+        .order(
+          "created_at",
+          {
+            ascending: true
+          }
+        )
+        .limit(1)
+        .maybeSingle();
+
+
+    if (error) {
+      throw error;
+    }
+
+    currentProject =
+      data;
+  }
+
 
   if (!currentProject) {
+
     throw new Error(
       "Не найден проект команды."
     );
@@ -336,7 +543,7 @@ async function ensureProject() {
 
 
 /* =========================
-   LOAD DATA
+   LOAD ALL
 ========================= */
 
 async function loadAll() {
@@ -350,151 +557,193 @@ async function loadAll() {
 }
 
 
+/* =========================
+   MEMBERS
+========================= */
+
 async function loadMembers() {
 
   const {
     data,
     error
-  } = await db
-    .from("profiles")
-    .select(`
-      id,
-      telegram_id,
-      telegram_username,
-      telegram_first_name,
-      telegram_photo_url
-    `)
-    .not(
-      "telegram_id",
-      "is",
-      null
-    )
-    .order(
-      "telegram_first_name",
-      {
-        ascending: true
-      }
-    );
+  } =
+    await db
+      .from("profiles")
+      .select(
+        `
+          id,
+          telegram_id,
+          telegram_username,
+          telegram_first_name,
+          telegram_photo_url
+        `
+      )
+      .not(
+        "telegram_id",
+        "is",
+        null
+      )
+      .order(
+        "telegram_first_name",
+        {
+          ascending: true
+        }
+      );
+
 
   if (error) {
 
-    console.warn(error);
+    console.warn(
+      "members:",
+      error.message
+    );
 
     members =
       currentProfile
         ? [currentProfile]
         : [];
 
+    renderTeam();
+
     return;
   }
 
-  members = data || [];
+
+  members =
+    data || [];
+
 
   if (
     currentProfile &&
     !members.some(
-      m => m.id === currentProfile.id
-    ) &&
-    currentProfile.telegram_id
+      m =>
+        m.id ===
+        currentProfile.id
+    )
   ) {
+
     members.unshift(
       currentProfile
     );
   }
+
+
+  renderTeam();
 }
 
 
+/* =========================
+   CONTENT
+========================= */
+
 async function loadContent() {
 
-  if (!currentProject) return;
+  if (!currentProject) {
+    return;
+  }
 
-
-  /* CONTENT */
 
   const {
     data: c,
     error: ce
-  } = await db
-    .from("content")
-    .select("*")
-    .eq(
-      "project_id",
-      currentProject.id
-    )
-    .order(
-      "created_at",
-      {
-        ascending: false
-      }
-    );
+  } =
+    await db
+      .from("content")
+      .select("*")
+      .eq(
+        "project_id",
+        currentProject.id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false
+        }
+      );
 
-  if (ce) throw ce;
 
+  if (ce) {
+    throw ce;
+  }
 
-  /* PUBLICATIONS */
 
   const {
     data: p,
     error: pe
-  } = await db
-    .from("publications")
-    .select("*")
-    .eq(
-      "project_id",
-      currentProject.id
-    )
-    .order(
-      "publication_date",
-      {
-        ascending: true
-      }
-    )
-    .order(
-      "publication_time",
-      {
-        ascending: true,
-        nullsFirst: false
-      }
-    );
+  } =
+    await db
+      .from("publications")
+      .select("*")
+      .eq(
+        "project_id",
+        currentProject.id
+      )
+      .order(
+        "publication_date",
+        {
+          ascending: true
+        }
+      )
+      .order(
+        "publication_time",
+        {
+          ascending: true,
+          nullsFirst: false
+        }
+      );
 
-  if (pe) throw pe;
 
+  if (pe) {
+    throw pe;
+  }
 
-  /* ASSIGNEES */
 
   const ids =
     (p || []).map(
       x => x.id
     );
 
+
   let a = [];
+
 
   if (ids.length) {
 
     const {
       data,
-      error
-    } = await db
-      .from("publication_assignees")
-      .select(
-        "publication_id,user_id"
-      )
-      .in(
-        "publication_id",
-        ids
-      );
+      error: ae
+    } =
+      await db
+        .from(
+          "publication_assignees"
+        )
+        .select(
+          "publication_id,user_id"
+        )
+        .in(
+          "publication_id",
+          ids
+        );
 
-    if (error) throw error;
 
-    a = data || [];
+    if (ae) {
+      throw ae;
+    }
+
+
+    a =
+      data || [];
   }
 
 
-  contents = c || [];
+  contents =
+    c || [];
 
-  publications = p || [];
+  publications =
+    p || [];
 
-  assigneeRows = a;
+  assigneeRows =
+    a;
 }
 
 
@@ -506,8 +755,11 @@ function setupRealtime() {
 
   realtimeChannels.forEach(
     channel =>
-      db.removeChannel(channel)
+      db.removeChannel(
+        channel
+      )
   );
+
 
   realtimeChannels = [];
 
@@ -516,40 +768,46 @@ function setupRealtime() {
     "content",
     "publications",
     "publication_assignees"
-  ].forEach(table => {
+  ].forEach(
+    table => {
 
-    const channel =
-      db
-        .channel(
-          `planner-${table}`
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table
-          },
-          async () => {
+      const channel =
+        db
+          .channel(
+            `planner-${table}`
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table
+            },
+            async () => {
 
-            try {
+              try {
 
-              await loadContent();
+                await loadContent();
 
-              renderEverything();
+                renderEverything();
 
-            } catch (error) {
+              } catch (error) {
 
-              console.warn(error);
+                console.warn(
+                  "Realtime:",
+                  error
+                );
+              }
             }
-          }
-        )
-        .subscribe();
+          )
+          .subscribe();
 
-    realtimeChannels.push(
-      channel
-    );
-  });
+
+      realtimeChannels.push(
+        channel
+      );
+    }
+  );
 }
 
 
@@ -576,11 +834,12 @@ function startPolling() {
 
           await loadMembers();
 
-          renderTeam();
-
         } catch (error) {
 
-          console.warn(error);
+          console.warn(
+            "Members refresh:",
+            error
+          );
         }
 
       },
@@ -601,7 +860,7 @@ function startPolling() {
         } catch (error) {
 
           console.warn(
-            "planner refresh:",
+            "Planner refresh:",
             error
           );
         }
@@ -613,7 +872,7 @@ function startPolling() {
 
 
 /* =========================
-   APP
+   SHOW APP
 ========================= */
 
 function showApp() {
@@ -622,9 +881,10 @@ function showApp() {
     .classList
     .add("hidden");
 
-  $("mainScreen")
+  $("app")
     .classList
     .remove("hidden");
+
 
   switchView(
     "calendarView"
@@ -632,17 +892,23 @@ function showApp() {
 }
 
 
-function showAuthError(message) {
+function showAuthError(
+  message
+) {
 
   const card =
     document.querySelector(
       ".auth-card"
     );
 
+
   if (!card) return;
 
+
   card.innerHTML = `
-    <div class="auth-logo">!</div>
+    <div class="logo-mark">
+      !
+    </div>
 
     <h1>
       Не удалось открыть
@@ -656,7 +922,7 @@ function showAuthError(message) {
 
 
 /* =========================
-   RENDER
+   RENDER EVERYTHING
 ========================= */
 
 function renderEverything() {
@@ -677,30 +943,40 @@ function renderEverything() {
    NAVIGATION
 ========================= */
 
-function switchView(viewId) {
+function switchView(
+  viewId
+) {
 
   document
-    .querySelectorAll(".view")
-    .forEach(view => {
+    .querySelectorAll(
+      ".view"
+    )
+    .forEach(
+      view => {
 
-      view.classList.toggle(
-        "hidden",
-        view.id !== viewId
-      );
-
-    });
+        view.classList.toggle(
+          "active",
+          view.id ===
+          viewId
+        );
+      }
+    );
 
 
   document
-    .querySelectorAll(".nav-button")
-    .forEach(button => {
+    .querySelectorAll(
+      ".nav-item"
+    )
+    .forEach(
+      button => {
 
-      button.classList.toggle(
-        "active",
-        button.dataset.view === viewId
-      );
-
-    });
+        button.classList.toggle(
+          "active",
+          button.dataset.view ===
+          viewId
+        );
+      }
+    );
 
 
   window.scrollTo({
@@ -719,7 +995,10 @@ function renderCalendar() {
   const grid =
     $("calendarGrid");
 
-  if (!grid) return;
+
+  if (!grid) {
+    return;
+  }
 
 
   const year =
@@ -729,7 +1008,7 @@ function renderCalendar() {
     currentMonth.getMonth();
 
 
-  $("currentMonth").textContent =
+  $("monthLabel").textContent =
     `${monthNames[month]} ${year}`;
 
 
@@ -749,39 +1028,36 @@ function renderCalendar() {
     ).getDate();
 
 
-  const leading =
-    (first.getDay() + 6) % 7;
+  const prevDays =
+    (
+      first.getDay() +
+      6
+    ) % 7;
 
 
-  const total =
+  const totalCells =
     Math.ceil(
-      (leading + daysInMonth) / 7
+      (
+        prevDays +
+        daysInMonth
+      ) / 7
     ) * 7;
 
 
-  grid.innerHTML = "";
+  grid.innerHTML =
+    "";
 
 
   for (
     let i = 0;
-    i < total;
+    i < totalCells;
     i++
   ) {
 
     const day =
-      i - leading + 1;
-
-
-    const dateObj =
-      new Date(
-        year,
-        month,
-        day
-      );
-
-
-    const date =
-      toISO(dateObj);
+      i -
+      prevDays +
+      1;
 
 
     const cell =
@@ -794,50 +1070,96 @@ function renderCalendar() {
       "calendar-cell";
 
 
-    if (
-      dateObj.getMonth() !==
-      month
-    ) {
+    let date;
+    let shownDay;
+
+
+    if (day < 1) {
+
+      const d =
+        new Date(
+          year,
+          month,
+          day
+        );
+
+
+      date =
+        toISO(d);
+
+      shownDay =
+        d.getDate();
+
       cell.classList.add(
-        "other-month"
+        "muted"
       );
+
+    } else if (
+      day >
+      daysInMonth
+    ) {
+
+      const d =
+        new Date(
+          year,
+          month,
+          day
+        );
+
+
+      date =
+        toISO(d);
+
+      shownDay =
+        d.getDate();
+
+      cell.classList.add(
+        "muted"
+      );
+
+    } else {
+
+      date =
+        `${year}-${pad(month + 1)}-${pad(day)}`;
+
+      shownDay =
+        day;
     }
 
 
-    if (
-      date === isoToday()
-    ) {
-      cell.classList.add(
-        "today"
-      );
-    }
+    cell.dataset.date =
+      date;
 
 
-    cell.innerHTML = `
-      <div class="calendar-date">
+    const isToday =
+      date ===
+      isoToday();
 
-        <span
-          class="calendar-date-number"
+
+    cell.innerHTML =
+      `
+        <div
+          class="day-number ${
+            isToday
+              ? "today"
+              : ""
+          }"
         >
-          ${dateObj.getDate()}
-        </span>
-
-      </div>
-
-      <div
-        class="calendar-publications"
-      ></div>
-    `;
+          ${shownDay}
+        </div>
+      `;
 
 
     cell.addEventListener(
       "click",
       () =>
-        openDayDetails(date)
+        openDayDetails(
+          date
+        )
     );
 
 
-    const list =
+    const dayPubs =
       publications
         .filter(
           p =>
@@ -849,86 +1171,99 @@ function renderCalendar() {
         );
 
 
-    const box =
-      cell.querySelector(
-        ".calendar-publications"
+    dayPubs
+      .slice(0, 3)
+      .forEach(
+        p => {
+
+          const chip =
+            document.createElement(
+              "button"
+            );
+
+
+          chip.type =
+            "button";
+
+
+          chip.className =
+            `
+              pub-chip
+              ${platformClass(
+                p.platform
+              )}
+              ${
+                p.status === "done"
+                  ? "done"
+                  : ""
+              }
+            `;
+
+
+          chip.innerHTML =
+            `
+              <span class="pub-time">
+                ${
+                  p.publication_time
+                    ? esc(
+                        p.publication_time
+                          .slice(0, 5)
+                      )
+                    : ""
+                }
+              </span>
+
+              ${esc(p.title)}
+            `;
+
+
+          chip.title =
+            `${p.platform} · ${p.format} · ${p.title}`;
+
+
+          chip.addEventListener(
+            "click",
+            event => {
+
+              event.stopPropagation();
+
+              openModal(
+                p.content_id
+              );
+            }
+          );
+
+
+          cell.appendChild(
+            chip
+          );
+        }
       );
 
 
-    list
-      .slice(0, 3)
-      .forEach(p => {
-
-        const chip =
-          document.createElement(
-            "button"
-          );
-
-        chip.type = "button";
-
-        chip.className =
-          "publication-chip";
-
-
-        chip.innerHTML = `
-          <div
-            class="publication-chip-title"
-          >
-            ${esc(p.title)}
-          </div>
-
-          <div
-            class="publication-chip-platform"
-          >
-            ${esc(p.platform)}
-
-            ${
-              p.publication_time
-                ? " · " +
-                  esc(
-                    p.publication_time
-                      .slice(0, 5)
-                  )
-                : ""
-            }
-          </div>
-        `;
-
-
-        chip.addEventListener(
-          "click",
-          event => {
-
-            event.stopPropagation();
-
-            openModal(
-              p.content_id
-            );
-          }
-        );
-
-
-        box.appendChild(
-          chip
-        );
-      });
-
-
-    if (list.length > 3) {
+    if (
+      dayPubs.length >
+      3
+    ) {
 
       const more =
         document.createElement(
           "button"
         );
 
+
       more.type =
         "button";
 
+
       more.className =
-        "more-publications";
+        "calendar-more";
+
 
       more.textContent =
-        `+ ещё ${list.length - 3}`;
+        `+ ещё ${
+          dayPubs.length - 3
+        }`;
 
 
       more.addEventListener(
@@ -944,7 +1279,7 @@ function renderCalendar() {
       );
 
 
-      box.appendChild(
+      cell.appendChild(
         more
       );
     }
@@ -961,17 +1296,11 @@ function renderCalendar() {
    DAY MODAL
 ========================= */
 
-function openDayDetails(date) {
+function openDayDetails(
+  date
+) {
 
-  selectedDayForNewPublication =
-    date;
-
-
-  const modal =
-    $("dayModal");
-
-
-  const list =
+  const pubs =
     publications
       .filter(
         p =>
@@ -989,126 +1318,196 @@ function openDayDetails(date) {
     );
 
 
-  $("dayModalDate").textContent =
-    `${d.getDate()} ${shortMonths[d.getMonth()]} ${d.getFullYear()}`;
+  $("dayModalEyebrow")
+    .textContent =
+      `${d.getDate()} ${
+        shortMonths[
+          d.getMonth()
+        ]
+      } ${d.getFullYear()}`;
+
+
+  $("dayModalTitle")
+    .textContent =
+      pubs.length
+        ? `${pubs.length} ${
+            plural(
+              pubs.length,
+              "публикация",
+              "публикации",
+              "публикаций"
+            )
+          }`
+        : "Пока пусто";
+
+
+  $("dayModalSubtitle")
+    .textContent =
+      pubs.length
+        ? "Расписание публикаций на эту дату"
+        : "На эту дату ещё ничего не запланировано";
+
+
+  $("addPublicationForDay")
+    .dataset.date =
+      date;
 
 
   const box =
-    $("dayPublications");
+    $("dayPublicationList");
 
 
-  if (!list.length) {
+  if (!pubs.length) {
 
-    box.innerHTML = `
-      <div class="empty-state">
-        На этот день публикаций нет.
-      </div>
-    `;
+    box.innerHTML =
+      `
+        <div class="empty">
+          Добавь первую публикацию на этот день.
+        </div>
+      `;
 
   } else {
 
     box.innerHTML =
-      list.map(p => `
+      pubs
+        .map(
+          p => {
 
-        <button
-          type="button"
-          class="day-publication"
-          data-day-pub="${p.id}"
-        >
+            const assignees =
+              publicationAssignees(
+                p.id
+              );
 
-          <div
-            class="day-publication-title"
-          >
-            ${esc(p.title)}
-          </div>
 
-          <div
-            class="day-publication-meta"
-          >
+            const avatars =
+              assignees
+                .slice(0, 3)
+                .map(
+                  m =>
+                    avatarHtml(m)
+                )
+                .join("");
 
-            <span>
-              ${esc(p.platform)}
-            </span>
 
-            <span>
-              ${esc(p.format)}
-            </span>
+            return `
+              <button
+                type="button"
+                class="day-publication"
+                data-day-pub="${p.id}"
+              >
 
-            ${
-              p.publication_time
-                ? `<span>
-                    ${esc(
-                      p.publication_time
-                        .slice(0, 5)
-                    )}
-                   </span>`
-                : ""
-            }
+                <div
+                  class="day-pub-time"
+                >
+                  ${
+                    p.publication_time
+                      ? esc(
+                          p.publication_time
+                            .slice(0, 5)
+                        )
+                      : "—"
+                  }
+                </div>
 
-            <span>
-              ${statusLabel(
-                p.status
-              )}
-            </span>
+                <span
+                  class="platform-dot ${
+                    platformClass(
+                      p.platform
+                    )
+                  }"
+                ></span>
 
-          </div>
+                <div
+                  class="day-pub-main"
+                >
 
-        </button>
+                  <div
+                    class="day-pub-title"
+                  >
+                    ${esc(p.title)}
+                  </div>
 
-      `).join("");
+                  <div
+                    class="day-pub-meta"
+                  >
+                    ${esc(p.platform)}
+                    ·
+                    ${esc(p.format)}
+                  </div>
+
+                </div>
+
+                <div
+                  class="assignee-mini"
+                >
+                  ${avatars}
+                </div>
+
+                <span
+                  class="chevron"
+                >
+                  ›
+                </span>
+
+              </button>
+            `;
+          }
+        )
+        .join("");
 
 
     box
       .querySelectorAll(
         "[data-day-pub]"
       )
-      .forEach(button => {
+      .forEach(
+        button => {
 
-        button.addEventListener(
-          "click",
-          () => {
+          button.addEventListener(
+            "click",
+            () => {
 
-            const p =
-              publications.find(
-                x =>
-                  x.id ===
-                  button.dataset
-                    .dayPub
-              );
-
-
-            closeDayDetails();
+              const p =
+                publications.find(
+                  x =>
+                    x.id ===
+                    button.dataset
+                      .dayPub
+                );
 
 
-            if (p) {
+              closeDayDetails();
 
-              openModal(
-                p.content_id
-              );
+
+              if (p) {
+
+                openModal(
+                  p.content_id
+                );
+              }
             }
-          }
-        );
-      });
+          );
+        }
+      );
   }
 
 
-  modal.classList.remove(
-    "hidden"
-  );
+  $("dayModal")
+    .classList
+    .remove("hidden");
 
 
   requestAnimationFrame(
     () => {
 
-      modal
+      document
         .querySelector(
-          ".modal-sheet"
+          "#dayModal .modal-sheet"
         )
         ?.scrollTo({
           top: 0,
           behavior: "instant"
         });
-
     }
   );
 }
@@ -1117,7 +1516,7 @@ function openDayDetails(date) {
 function closeDayDetails() {
 
   $("dayModal")
-    ?.classList
+    .classList
     .add("hidden");
 }
 
@@ -1128,139 +1527,203 @@ function closeDayDetails() {
 
 function renderUpcoming() {
 
-  const box =
-    $("upcomingList");
-
-  if (!box) return;
-
-
   const now =
     new Date();
 
 
-  const list =
-    publications
-      .filter(p => {
-
-        const dt =
-          new Date(
-            `${p.publication_date}T${
-              p.publication_time ||
-              "23:59:59"
-            }`
-          );
-
-        return dt >= now;
-      })
+  const upcoming =
+    [...publications]
       .sort(
         sortPublication
       )
-      .slice(0, 6);
+      .filter(
+        p => {
+
+          const dt =
+            p.publication_time
+              ? new Date(
+                  `${p.publication_date}T${p.publication_time}`
+                )
+              : new Date(
+                  `${p.publication_date}T23:59:00`
+                );
 
 
-  if (!list.length) {
+          return dt >= now;
+        }
+      )
+      .slice(
+        0,
+        6
+      );
 
-    box.innerHTML = `
-      <div class="empty-state">
-        Пока нет запланированных публикаций.
-      </div>
-    `;
+
+  const box =
+    $("upcomingList");
+
+
+  if (!upcoming.length) {
+
+    box.innerHTML =
+      `
+        <div class="empty">
+          Пока нет запланированных публикаций.
+        </div>
+      `;
 
     return;
   }
 
 
   box.innerHTML =
-    list.map(p => `
+    upcoming
+      .map(
+        p => {
 
-      <button
-        type="button"
-        class="upcoming-card"
-        data-upcoming="${p.id}"
-      >
-
-        <div
-          class="upcoming-date"
-        >
-          ${formatDate(
-            p.publication_date
-          )}
-
-          ${
-            p.publication_time
-              ? " · " +
-                esc(
-                  p.publication_time
-                    .slice(0, 5)
-                )
-              : ""
-          }
-        </div>
+          const assignees =
+            publicationAssignees(
+              p.id
+            ).slice(
+              0,
+              3
+            );
 
 
-        <div
-          class="upcoming-title"
-        >
-          ${esc(p.title)}
-        </div>
+          const avatars =
+            assignees
+              .map(
+                m =>
+                  avatarHtml(m)
+              )
+              .join("");
 
 
-        <div
-          class="upcoming-meta"
-        >
+          return `
+            <button
+              class="upcoming-card"
+              data-pub="${p.id}"
+              type="button"
+            >
 
-          <span
-            class="platform-tag"
-          >
-            ${esc(p.platform)}
-          </span>
+              <div
+                class="date-box"
+              >
 
-          <span
-            class="format-tag"
-          >
-            ${esc(p.format)}
-          </span>
+                <strong>
+                  ${p.publication_date.slice(8)}
+                </strong>
 
-        </div>
+                <span>
+                  ${
+                    shortMonths[
+                      Number(
+                        p.publication_date.slice(
+                          5,
+                          7
+                        )
+                      ) - 1
+                    ]
+                  }
+                </span>
 
-      </button>
+              </div>
 
-    `).join("");
+
+              <span
+                class="platform-dot ${
+                  platformClass(
+                    p.platform
+                  )
+                }"
+              ></span>
+
+
+              <div
+                class="upcoming-main"
+              >
+
+                <div
+                  class="upcoming-title"
+                >
+                  ${esc(p.title)}
+                </div>
+
+                <div
+                  class="upcoming-meta"
+                >
+                  ${esc(p.platform)}
+                  ·
+                  ${esc(p.format)}
+
+                  ${
+                    p.publication_time
+                      ? " · " +
+                        esc(
+                          p.publication_time
+                            .slice(0, 5)
+                        )
+                      : ""
+                  }
+                </div>
+
+              </div>
+
+
+              <div
+                class="assignee-mini"
+              >
+                ${avatars}
+              </div>
+
+
+              <span
+                class="chevron"
+              >
+                ›
+              </span>
+
+            </button>
+          `;
+        }
+      )
+      .join("");
 
 
   box
     .querySelectorAll(
-      "[data-upcoming]"
+      "[data-pub]"
     )
-    .forEach(button => {
+    .forEach(
+      button => {
 
-      button.addEventListener(
-        "click",
-        () => {
+        button.addEventListener(
+          "click",
+          () => {
 
-          const p =
-            publications.find(
-              x =>
-                x.id ===
-                button.dataset
-                  .upcoming
-            );
+            const p =
+              publications.find(
+                x =>
+                  x.id ===
+                  button.dataset
+                    .pub
+              );
 
 
-          if (p) {
+            if (p) {
 
-            openModal(
-              p.content_id
-            );
+              openModal(
+                p.content_id
+              );
+            }
           }
-        }
-      );
-    });
+        );
+      }
+    );
 }
 
 
 /* =========================
-   CONTENT
+   CONTENT LIST
 ========================= */
 
 function renderContent() {
@@ -1268,266 +1731,365 @@ function renderContent() {
   const box =
     $("contentList");
 
-  if (!box) return;
+
+  if (!box) {
+    return;
+  }
 
 
   const search =
-    ($("contentSearch")
-      ?.value || "")
+    (
+      $("contentSearch")
+        ?.value ||
+      ""
+    )
       .trim()
       .toLowerCase();
 
 
   const platform =
-    $("platformFilter")
-      ?.value || "all";
+    $("contentPlatformFilter")
+      ?.value ||
+    "all";
 
 
   const filtered =
-    contents.filter(c => {
+    contents.filter(
+      c => {
 
-      const pubs =
-        publications.filter(
-          p =>
-            p.content_id ===
-            c.id
-        );
-
-
-      const text = [
-        c.title,
-        c.description,
-        ...pubs.flatMap(
-          p => [
-            p.title,
-            p.platform,
-            p.format,
-            p.description
-          ]
-        )
-      ]
-        .join(" ")
-        .toLowerCase();
-
-
-      return (
-        (!search ||
-          text.includes(
-            search
-          )) &&
-        (
-          platform === "all" ||
-          pubs.some(
+        const pubs =
+          publications.filter(
             p =>
-              p.platform ===
-              platform
+              p.content_id ===
+              c.id
+          );
+
+
+        const haystack =
+          [
+            c.title || "",
+            c.description || "",
+            ...pubs.flatMap(
+              p => [
+                p.title,
+                p.platform,
+                p.format,
+                p.description ||
+                  ""
+              ]
+            )
+          ]
+            .join(" ")
+            .toLowerCase();
+
+
+        return (
+          (
+            !search ||
+            haystack.includes(
+              search
+            )
+          ) &&
+          (
+            platform ===
+              "all" ||
+            pubs.some(
+              p =>
+                p.platform ===
+                platform
+            )
           )
-        )
-      );
-    });
+        );
+      }
+    );
 
 
   if (!filtered.length) {
 
-    box.innerHTML = `
-      <div class="empty-state">
-        ${
-          contents.length
-            ? "По выбранным фильтрам ничего не найдено."
-            : "Контента пока нет. Нажми «+ Контент», чтобы добавить."
-        }
-      </div>
-    `;
+    const message =
+      contents.length
+        ? "По выбранным фильтрам ничего не найдено."
+        : "Контента пока нет. Нажми «+ Контент», чтобы добавить.";
+
+
+    box.innerHTML =
+      `
+        <div class="empty">
+          ${message}
+        </div>
+      `;
 
     return;
   }
 
 
   box.innerHTML =
-    filtered.map(c => {
+    filtered
+      .map(
+        c => {
 
-      const pubs =
-        publications
-          .filter(
-            p =>
-              p.content_id ===
-              c.id
-          )
-          .sort(
-            sortPublication
-          );
+          const pubs =
+            publications
+              .filter(
+                p =>
+                  p.content_id ===
+                  c.id
+              )
+              .sort(
+                sortPublication
+              );
 
 
-      return `
+          const firstDate =
+            pubs[0]
+              ?.publication_date
+              ? formatDate(
+                  pubs[0]
+                    .publication_date
+                )
+              : "Без даты";
 
-        <article
-          class="content-card"
-          data-content="${c.id}"
-        >
 
-          <div
-            class="content-card-head"
-          >
-
-            <div>
+          return `
+            <article
+              class="content-card"
+              data-content="${c.id}"
+            >
 
               <div
-                class="content-card-title"
+                class="content-card-head"
               >
-                ${esc(c.title)}
+
+                <div
+                  class="content-main"
+                >
+
+                  <div
+                    class="content-title"
+                  >
+                    ${esc(c.title)}
+                  </div>
+
+
+                  ${
+                    c.description
+                      ? `
+                        <div
+                          class="content-description"
+                        >
+                          ${esc(
+                            c.description
+                          )}
+                        </div>
+                      `
+                      : ""
+                  }
+
+
+                  <div
+                    class="content-meta"
+                  >
+                    ${pubs.length}
+                    ${
+                      plural(
+                        pubs.length,
+                        "публикация",
+                        "публикации",
+                        "публикаций"
+                      )
+                    }
+                    ·
+                    ${esc(firstDate)}
+                  </div>
+
+                </div>
+
+
+                <span
+                  class="chevron"
+                >
+                  ›
+                </span>
+
               </div>
 
-              ${
-                c.description
-                  ? `
-                    <div
-                      class="content-card-description"
-                    >
-                      ${esc(
-                        c.description
-                      )}
-                    </div>
-                  `
-                  : ""
-              }
 
-            </div>
+              <div
+                class="content-publications"
+              >
 
-            <span>›</span>
+                ${
+                  pubs.length
 
-          </div>
+                    ? pubs
+                        .map(
+                          p => `
+                            <button
+                              class="content-publication"
+                              data-publication-id="${p.id}"
+                              type="button"
+                            >
 
-
-          <div
-            class="content-publications"
-          >
-
-            ${
-              pubs.length
-
-                ? pubs.map(p => `
-
-                  <button
-                    type="button"
-                    class="content-publication-row"
-                    data-publication-id="${p.id}"
-                  >
-
-                    <span
-                      class="content-publication-date"
-                    >
-                      ${formatDate(
-                        p.publication_date
-                      )}
-
-                      ${
-                        p.publication_time
-                          ? " · " +
-                            esc(
-                              p.publication_time
-                                .slice(0, 5)
-                            )
-                          : ""
-                      }
-                    </span>
+                              <span
+                                class="platform-dot ${
+                                  platformClass(
+                                    p.platform
+                                  )
+                                }"
+                              ></span>
 
 
-                    <span
-                      class="content-publication-title"
-                    >
-                      ${esc(p.title)}
-                    </span>
+                              <div
+                                class="content-pub-main"
+                              >
+
+                                <div
+                                  class="content-pub-title"
+                                >
+                                  ${esc(
+                                    p.title
+                                  )}
+                                </div>
 
 
-                    <span
-                      class="content-publication-platform"
-                    >
-                      ${esc(
-                        p.platform
-                      )}
-                    </span>
+                                <div
+                                  class="content-pub-meta"
+                                >
+                                  ${esc(
+                                    p.platform
+                                  )}
+                                  ·
+                                  ${esc(
+                                    p.format
+                                  )}
+                                  ·
+                                  ${formatDate(
+                                    p.publication_date
+                                  )}
 
-                  </button>
+                                  ${
+                                    p.publication_time
+                                      ? " · " +
+                                        esc(
+                                          p.publication_time
+                                            .slice(0, 5)
+                                        )
+                                      : ""
+                                  }
+                                </div>
 
-                `).join("")
+                              </div>
 
-                : `
-                  <div
-                    class="empty-state"
-                    style="padding:18px"
-                  >
-                    Публикаций пока нет.
-                  </div>
-                `
-            }
 
-          </div>
+                              <span
+                                class="status-pill ${
+                                  p.status ===
+                                  "progress"
+                                    ? "progress"
+                                    : p.status ===
+                                      "done"
+                                      ? "done"
+                                      : ""
+                                }"
+                              >
+                                ${statusLabel(
+                                  p.status
+                                )}
+                              </span>
 
-        </article>
 
-      `;
+                              <span
+                                class="chevron"
+                              >
+                                ›
+                              </span>
 
-    }).join("");
+                            </button>
+                          `
+                        )
+                        .join("")
+
+                    : `
+                      <div
+                        class="empty"
+                        style="padding:18px"
+                      >
+                        Публикаций пока нет.
+                      </div>
+                    `
+                }
+
+              </div>
+
+            </article>
+          `;
+        }
+      )
+      .join("");
 
 
   box
     .querySelectorAll(
       "[data-content]"
     )
-    .forEach(card => {
+    .forEach(
+      card => {
 
-      card.addEventListener(
-        "click",
-        event => {
+        card.addEventListener(
+          "click",
+          event => {
 
-          if (
-            event.target.closest(
-              "[data-publication-id]"
-            )
-          ) {
-            return;
+            if (
+              event.target.closest(
+                "[data-publication-id]"
+              )
+            ) {
+              return;
+            }
+
+
+            openModal(
+              card.dataset.content
+            );
           }
-
-
-          openModal(
-            card.dataset.content
-          );
-        }
-      );
-    });
+        );
+      }
+    );
 
 
   box
     .querySelectorAll(
       "[data-publication-id]"
     )
-    .forEach(button => {
+    .forEach(
+      button => {
 
-      button.addEventListener(
-        "click",
-        event => {
+        button.addEventListener(
+          "click",
+          event => {
 
-          event.stopPropagation();
-
-
-          const p =
-            publications.find(
-              x =>
-                x.id ===
-                button.dataset
-                  .publicationId
-            );
+            event.stopPropagation();
 
 
-          if (p) {
+            const p =
+              publications.find(
+                x =>
+                  x.id ===
+                  button.dataset
+                    .publicationId
+              );
 
-            openModal(
-              p.content_id
-            );
+
+            if (p) {
+
+              openModal(
+                p.content_id
+              );
+            }
           }
-        }
-      );
-    });
+        );
+      }
+    );
 }
 
 
@@ -1540,65 +2102,72 @@ function renderTeam() {
   const box =
     $("teamList");
 
-  if (!box) return;
+
+  $("teamCount")
+    .textContent =
+      `${members.length} ${
+        plural(
+          members.length,
+          "участник",
+          "участника",
+          "участников"
+        )
+      }`;
 
 
   if (!members.length) {
 
-    box.innerHTML = `
-      <div class="empty-state">
-        Участники появятся здесь после входа через Telegram.
-      </div>
-    `;
+    box.innerHTML =
+      `
+        <div class="empty">
+          Участники появятся здесь после входа через Telegram.
+        </div>
+      `;
 
     return;
   }
 
 
   box.innerHTML =
-    members.map(m => `
+    members
+      .map(
+        m => `
+          <div
+            class="team-card"
+          >
 
-      <div
-        class="team-card"
-      >
+            ${avatarHtml(m)}
 
-        <div
-          class="team-card-top"
-        >
+            <div>
 
-          ${avatarHtml(m)}
+              <div
+                class="team-name"
+              >
+                ${esc(
+                  m.telegram_first_name ||
+                  "Без имени"
+                )}
+              </div>
 
-          <div>
+              <div
+                class="team-handle"
+              >
+                ${
+                  m.telegram_username
+                    ? "@" +
+                      esc(
+                        m.telegram_username
+                      )
+                    : "Telegram"
+                }
+              </div>
 
-            <div
-              class="team-name"
-            >
-              ${esc(
-                m.telegram_first_name ||
-                "Без имени"
-              )}
-            </div>
-
-            <div
-              class="team-username"
-            >
-              ${
-                m.telegram_username
-                  ? "@" +
-                    esc(
-                      m.telegram_username
-                    )
-                  : "Telegram"
-              }
             </div>
 
           </div>
-
-        </div>
-
-      </div>
-
-    `).join("");
+        `
+      )
+      .join("");
 }
 
 
@@ -1611,17 +2180,20 @@ function analyticsPeriod() {
   const now =
     new Date();
 
-  let from = null;
+  let from =
+    null;
 
 
   if (
     activePeriod ===
     "week"
   ) {
+
     from =
       new Date(
         now.getTime() -
-        6 * 86400000
+        6 *
+        86400000
       );
   }
 
@@ -1630,10 +2202,12 @@ function analyticsPeriod() {
     activePeriod ===
     "month"
   ) {
+
     from =
       new Date(
         now.getTime() -
-        29 * 86400000
+        29 *
+        86400000
       );
   }
 
@@ -1642,17 +2216,20 @@ function analyticsPeriod() {
     activePeriod ===
     "3months"
   ) {
+
     from =
       new Date(
         now.getTime() -
-        89 * 86400000
+        89 *
+        86400000
       );
   }
 
 
   const platform =
     $("analyticsPlatform")
-      ?.value || "all";
+      ?.value ||
+    "all";
 
 
   return publications.filter(
@@ -1665,11 +2242,15 @@ function analyticsPeriod() {
 
 
       return (
-        (!from ||
-          d >= from) &&
         (
-          platform === "all" ||
-          p.platform === platform
+          !from ||
+          d >= from
+        ) &&
+        (
+          platform ===
+            "all" ||
+          p.platform ===
+            platform
         )
       );
     }
@@ -1684,18 +2265,23 @@ function countBy(
 
   return list.reduce(
     (
-      acc,
+      result,
       item
     ) => {
 
-      const k =
+      const value =
         item[key] ||
         "Не указано";
 
-      acc[k] =
-        (acc[k] || 0) + 1;
 
-      return acc;
+      result[value] =
+        (
+          result[value] ||
+          0
+        ) + 1;
+
+
+      return result;
 
     },
     {}
@@ -1704,72 +2290,88 @@ function countBy(
 
 
 function renderBars(
-  box,
-  obj
+  id,
+  object
 ) {
 
-  const entries =
-    Object.entries(obj)
-      .sort(
-        (a, b) =>
-          b[1] - a[1]
-      );
+  const box =
+    $(id);
 
 
-  if (!entries.length) {
-
-    box.innerHTML = `
-      <div class="empty-state">
-        Нет данных
-      </div>
-    `;
-
+  if (!box) {
     return;
   }
 
 
+  const entries =
+    Object.entries(
+      object
+    )
+      .sort(
+        (a, b) =>
+          b[1] -
+          a[1]
+      );
+
+
   const max =
-    entries[0][1];
+    entries[0]?.[1] ||
+    1;
 
 
   box.innerHTML =
-    entries.map(
-      ([name, n]) => `
+    entries.length
 
-        <div
-          class="analytics-row"
-        >
+      ? `
+        <div class="bars">
 
-          <span
-            class="analytics-row-label"
-          >
-            ${esc(name)}
-          </span>
+          ${
+            entries
+              .map(
+                ([name, n]) => `
+                  <div
+                    class="bar-row"
+                  >
 
-          <div
-            class="analytics-bar"
-          >
+                    <span>
+                      ${esc(name)}
+                    </span>
 
-            <div
-              class="analytics-bar-fill"
-              style="width:${Math.max(
-                5,
-                n / max * 100
-              )}%"
-            ></div>
+                    <div
+                      class="bar-track"
+                    >
 
-          </div>
+                      <div
+                        class="bar-fill"
+                        style="width:${Math.max(
+                          4,
+                          n / max * 100
+                        )}%"
+                      ></div>
 
-          <span
-            class="analytics-row-value"
-          >
-            ${n}
-          </span>
+                    </div>
+
+                    <strong>
+                      ${n}
+                    </strong>
+
+                  </div>
+                `
+              )
+              .join("")
+          }
 
         </div>
-
       `
-    ).join("");
+
+      : `
+        <div
+          class="empty"
+          style="padding:18px;margin-top:12px"
+        >
+          Нет данных
+        </div>
+      `;
 }
 
 
@@ -1779,86 +2381,54 @@ function renderAnalytics() {
     analyticsPeriod();
 
 
-  const total =
-    $("analyticsSummary");
-
-  const charts =
-    $("analyticsCharts");
-
-
-  if (
-    !total ||
-    !charts
-  ) {
-    return;
-  }
+  $("statTotal")
+    .textContent =
+      list.length;
 
 
   const days =
-    activePeriod === "week"
+    activePeriod ===
+      "week"
       ? 7
-      : activePeriod === "month"
+      : activePeriod ===
+        "month"
         ? 30
-        : activePeriod === "3months"
+        : activePeriod ===
+          "3months"
           ? 90
           : Math.max(
               1,
-              list.length
-                ? Math.round(
-                    (
-                      new Date(
-                        maxDate(
-                          list
-                        )
-                      ) -
-                      new Date(
-                        minDate(
-                          list
-                        )
-                      )
-                    ) /
-                    86400000
-                  ) + 1
-                : 1
+              daysBetween(
+                minDate(list),
+                maxDate(list)
+              ) + 1
             );
 
 
-  const perWeek =
-    (
-      list.length /
-      days *
-      7
-    ).toFixed(1);
+  $("statWeek")
+    .textContent =
+      (
+        list.length /
+        days *
+        7
+      ).toFixed(1);
 
 
-  const assignees =
-    {};
+  renderBars(
+    "platformStats",
+    countBy(
+      list,
+      "platform"
+    )
+  );
 
 
-  list.forEach(
-    p => {
-
-      publicationAssignees(
-        p.id
-      ).forEach(
-        m => {
-
-          const name =
-            m.telegram_first_name ||
-            m.telegram_username ||
-            "Участник";
-
-
-          assignees[name] =
-            (
-              assignees[name] ||
-              0
-            ) + 1;
-
-        }
-      );
-
-    }
+  renderBars(
+    "formatStats",
+    countBy(
+      list,
+      "format"
+    )
   );
 
 
@@ -1875,7 +2445,7 @@ function renderAnalytics() {
         );
 
 
-      const name =
+      const key =
         [
           "Вс",
           "Пн",
@@ -1884,221 +2454,105 @@ function renderAnalytics() {
           "Чт",
           "Пт",
           "Сб"
-        ][d.getDay()];
+        ][
+          d.getDay()
+        ];
 
 
-      weekdays[name] =
+      weekdays[key] =
         (
-          weekdays[name] ||
+          weekdays[key] ||
           0
         ) + 1;
-
     }
   );
 
 
-  total.innerHTML = `
-
-    <div
-      class="analytics-stat"
-    >
-
-      <div
-        class="analytics-stat-value"
-      >
-        ${list.length}
-      </div>
-
-      <div
-        class="analytics-stat-label"
-      >
-        публикаций
-      </div>
-
-    </div>
-
-
-    <div
-      class="analytics-stat"
-    >
-
-      <div
-        class="analytics-stat-value"
-      >
-        ${perWeek}
-      </div>
-
-      <div
-        class="analytics-stat-label"
-      >
-        в неделю
-      </div>
-
-    </div>
-
-
-    <div
-      class="analytics-stat"
-    >
-
-      <div
-        class="analytics-stat-value"
-      >
-        ${
-          Object.keys(
-            countBy(
-              list,
-              "platform"
-            )
-          ).length
-        }
-      </div>
-
-      <div
-        class="analytics-stat-label"
-      >
-        площадок
-      </div>
-
-    </div>
-
-
-    <div
-      class="analytics-stat"
-    >
-
-      <div
-        class="analytics-stat-value"
-      >
-        ${members.length}
-      </div>
-
-      <div
-        class="analytics-stat-label"
-      >
-        участников
-      </div>
-
-    </div>
-
-  `;
-
-
-  charts.innerHTML = `
-
-    <div
-      class="analytics-card"
-    >
-
-      <h3>
-        По площадкам
-      </h3>
-
-      <div
-        id="platformChart"
-      ></div>
-
-    </div>
-
-
-    <div
-      class="analytics-card"
-    >
-
-      <h3>
-        По форматам
-      </h3>
-
-      <div
-        id="formatChart"
-      ></div>
-
-    </div>
-
-
-    <div
-      class="analytics-card"
-    >
-
-      <h3>
-        По дням недели
-      </h3>
-
-      <div
-        id="weekdayChart"
-      ></div>
-
-    </div>
-
-
-    <div
-      class="analytics-card"
-    >
-
-      <h3>
-        Нагрузка команды
-      </h3>
-
-      <div
-        id="assigneeChart"
-      ></div>
-
-    </div>
-
-  `;
-
-
   renderBars(
-    $("platformChart"),
-    countBy(
-      list,
-      "platform"
-    )
-  );
-
-
-  renderBars(
-    $("formatChart"),
-    countBy(
-      list,
-      "format"
-    )
-  );
-
-
-  renderBars(
-    $("weekdayChart"),
+    "weekdayStats",
     weekdays
   );
 
 
+  const workload =
+    {};
+
+
+  list.forEach(
+    p => {
+
+      publicationAssignees(
+        p.id
+      ).forEach(
+        m => {
+
+          const key =
+            m.telegram_first_name ||
+            m.telegram_username ||
+            "Участник";
+
+
+          workload[key] =
+            (
+              workload[key] ||
+              0
+            ) + 1;
+        }
+      );
+    }
+  );
+
+
   renderBars(
-    $("assigneeChart"),
-    assignees
+    "assigneeStats",
+    workload
   );
 }
 
 
 function minDate(list) {
 
-  return list.reduce(
-    (a, p) =>
-      a < p.publication_date
-        ? a
-        : p.publication_date,
-    list[0].publication_date
-  );
+  return list.length
+    ? list.reduce(
+        (a, p) =>
+          a <
+          p.publication_date
+            ? a
+            : p.publication_date,
+        list[0]
+          .publication_date
+      )
+    : isoToday();
 }
 
 
 function maxDate(list) {
 
-  return list.reduce(
-    (a, p) =>
-      a > p.publication_date
-        ? a
-        : p.publication_date,
-    list[0].publication_date
+  return list.length
+    ? list.reduce(
+        (a, p) =>
+          a >
+          p.publication_date
+            ? a
+            : p.publication_date,
+        list[0]
+          .publication_date
+      )
+    : isoToday();
+}
+
+
+function daysBetween(
+  a,
+  b
+) {
+
+  return Math.round(
+    (
+      new Date(b) -
+      new Date(a)
+    ) /
+    86400000
   );
 }
 
@@ -2126,7 +2580,7 @@ function publicationAssignees(
 
 
 /* =========================
-   CONTENT MODAL
+   EDITOR
 ========================= */
 
 function openModal(
@@ -2134,26 +2588,36 @@ function openModal(
   presetDate = null
 ) {
 
-  const modal =
-    $("contentModal");
+  $("modal")
+    .classList
+    .remove("hidden");
 
 
-  if (!modal) return;
+  requestAnimationFrame(
+    () => {
 
-
-  modal.classList.remove(
-    "hidden"
+      document
+        .querySelector(
+          "#modal .modal-sheet"
+        )
+        ?.scrollTo({
+          top: 0,
+          behavior: "instant"
+        });
+    }
   );
 
 
-  $("contentId").value =
-    contentId || "";
+  $("editingContentId")
+    .value =
+      contentId || "";
 
 
-  $("modalTitle").textContent =
-    contentId
-      ? "Редактировать контент"
-      : "Новый контент";
+  $("modalTitle")
+    .textContent =
+      contentId
+        ? "Редактировать контент"
+        : "Новый контент";
 
 
   $("deleteContentBtn")
@@ -2164,16 +2628,19 @@ function openModal(
     );
 
 
-  $("contentTitle").value =
-    "";
+  $("contentTitle")
+    .value =
+      "";
 
 
-  $("contentDescription").value =
-    "";
+  $("contentDescription")
+    .value =
+      "";
 
 
-  $("publicationTemplates")
-    .innerHTML = "";
+  $("publicationEditorList")
+    .innerHTML =
+      "";
 
 
   if (contentId) {
@@ -2188,11 +2655,14 @@ function openModal(
 
     if (c) {
 
-      $("contentTitle").value =
-        c.title || "";
+      $("contentTitle")
+        .value =
+          c.title || "";
 
-      $("contentDescription").value =
-        c.description || "";
+
+      $("contentDescription")
+        .value =
+          c.description || "";
     }
 
 
@@ -2206,43 +2676,23 @@ function openModal(
         sortPublication
       )
       .forEach(
-        p =>
-          addPublicationEditor(
-            p
-          )
+        addPublicationEditor
       );
 
   } else {
 
     addPublicationEditor(
       null,
-      presetDate ||
-      isoToday()
+      presetDate
     );
   }
-
-
-  requestAnimationFrame(
-    () => {
-
-      modal
-        .querySelector(
-          ".modal-sheet"
-        )
-        ?.scrollTo({
-          top: 0,
-          behavior: "instant"
-        });
-
-    }
-  );
 }
 
 
 function closeModal() {
 
-  $("contentModal")
-    ?.classList
+  $("modal")
+    .classList
     .add("hidden");
 }
 
@@ -2256,26 +2706,97 @@ function addPublicationEditor(
   presetDate = null
 ) {
 
-  const wrap =
-    $("publicationTemplates");
+  const template =
+    $("publicationTemplate");
 
 
   const node =
-    document.createElement(
-      "div"
-    );
-
-
-  node.className =
-    "publication-template";
-
-
-  node.dataset.publication =
-    "1";
+    template
+      .content
+      .firstElementChild
+      .cloneNode(true);
 
 
   node.dataset.existingId =
     data?.id || "";
+
+
+  const fields =
+    node.querySelectorAll(
+      "[data-field]"
+    );
+
+
+  const values = {
+
+    title: "",
+
+    platform:
+      "Telegram",
+
+    format:
+      "Пост",
+
+    date:
+      presetDate ||
+      isoToday(),
+
+    time:
+      "",
+
+    status:
+      "planned",
+
+    link:
+      "",
+
+    description:
+      ""
+  };
+
+
+  fields.forEach(
+    field => {
+
+      field.value =
+        data?.[
+          field.dataset.field
+        ] ??
+        values[
+          field.dataset.field
+        ];
+    }
+  );
+
+
+  node
+    .querySelector(
+      '[data-reminder="24h"]'
+    )
+    .checked =
+      data
+        ? !!data.reminder_24h
+        : true;
+
+
+  node
+    .querySelector(
+      '[data-reminder="3h"]'
+    )
+    .checked =
+      data
+        ? !!data.reminder_3h
+        : false;
+
+
+  node
+    .querySelector(
+      '[data-reminder="1h"]'
+    )
+    .checked =
+      data
+        ? !!data.reminder_1h
+        : false;
 
 
   const selected =
@@ -2295,410 +2816,173 @@ function addPublicationEditor(
     );
 
 
-  node.innerHTML = `
+  node._selected =
+    selected;
 
-    <div
-      class="publication-template-head"
-    >
 
-      <div
-        class="publication-template-title pub-number"
-      >
-        Публикация
-      </div>
+  const renderPicker =
+    () => {
 
-      <button
-        type="button"
-        class="remove-publication"
-      >
-        ×
-      </button>
-
-    </div>
-
-
-    <div
-      class="publication-fields"
-    >
-
-
-      <div
-        class="field full-field"
-      >
-
-        <label>
-          Название публикации
-        </label>
-
-        <input
-          data-field="title"
-          type="text"
-          placeholder="Название"
-          value="${esc(
-            data?.title || ""
-          )}"
-        />
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Площадка
-        </label>
-
-        <select
-          data-field="platform"
-        >
-
-          <option value="Telegram">
-            Telegram
-          </option>
-
-          <option value="VK">
-            VK
-          </option>
-
-          <option value="Instagram">
-            Instagram
-          </option>
-
-          <option value="YouTube">
-            YouTube
-          </option>
-
-          <option value="TikTok">
-            TikTok
-          </option>
-
-          <option value="Другое">
-            Другое
-          </option>
-
-        </select>
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Формат
-        </label>
-
-        <input
-          data-field="format"
-          type="text"
-          placeholder="Пост / Reels / Видео"
-          value="${esc(
-            data?.format ||
-            "Пост"
-          )}"
-        />
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Дата
-        </label>
-
-        <input
-          data-field="date"
-          type="date"
-          value="${esc(
-            data?.publication_date ||
-            presetDate ||
-            isoToday()
-          )}"
-        />
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Время
-        </label>
-
-        <input
-          data-field="time"
-          type="time"
-          value="${esc(
-            data?.publication_time
-              ? data.publication_time
-                  .slice(0, 5)
-              : ""
-          )}"
-        />
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Статус
-        </label>
-
-        <select
-          data-field="status"
-        >
-
-          <option value="planned">
-            Запланировано
-          </option>
-
-          <option value="progress">
-            В работе
-          </option>
-
-          <option value="done">
-            Готово
-          </option>
-
-        </select>
-
-      </div>
-
-
-      <div
-        class="field"
-      >
-
-        <label>
-          Ссылка
-        </label>
-
-        <input
-          data-field="link"
-          type="url"
-          placeholder="https://…"
-          value="${esc(
-            data?.link || ""
-          )}"
-        />
-
-      </div>
-
-
-      <div
-        class="field full-field"
-      >
-
-        <label>
-          Описание публикации
-        </label>
-
-        <textarea
-          data-field="description"
-          rows="3"
-          placeholder="Дополнительная информация"
-        >${esc(
-          data?.description ||
-          ""
-        )}</textarea>
-
-      </div>
-
-
-      <div
-        class="field full-field"
-      >
-
-        <label>
-          Ответственные
-        </label>
-
-
-        <div
-          class="assignee-picker"
-        >
-
-          <div
-            class="assignee-selected"
-            data-selected
-          ></div>
-
-
-          <input
-            data-search
-            type="search"
-            placeholder="Поиск участника"
-          />
-
-
-          <div
-            data-options
-          ></div>
-
-        </div>
-
-      </div>
-
-
-      <div
-        class="field full-field"
-      >
-
-        <label>
-          Напоминания
-        </label>
-
-
-        <div
-          class="reminders"
-        >
-
-          <label
-            class="reminder-option"
-          >
-
-            <input
-              type="checkbox"
-              data-reminder="24h"
-              ${
-                data
-                  ? data.reminder_24h
-                    ? "checked"
-                    : ""
-                  : "checked"
-              }
-            >
-
-            за 24 часа
-
-          </label>
-
-
-          <label
-            class="reminder-option"
-          >
-
-            <input
-              type="checkbox"
-              data-reminder="3h"
-              ${
-                data?.reminder_3h
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            за 3 часа
-
-          </label>
-
-
-          <label
-            class="reminder-option"
-          >
-
-            <input
-              type="checkbox"
-              data-reminder="1h"
-              ${
-                data?.reminder_1h
-                  ? "checked"
-                  : ""
-              }
-            >
-
-            за 1 час
-
-          </label>
-
-        </div>
-
-      </div>
-
-
-    </div>
-
-  `;
-
-
-  const platform =
-    node.querySelector(
-      '[data-field="platform"]'
-    );
-
-
-  const status =
-    node.querySelector(
-      '[data-field="status"]'
-    );
-
-
-  platform.value =
-    data?.platform ||
-    "Telegram";
-
-
-  status.value =
-    data?.status ||
-    "planned";
-
-
-  function renderPicker() {
-
-    const search =
-      (
-        node
-          .querySelector(
-            "[data-search]"
-          )
-          .value ||
-        ""
-      )
-        .toLowerCase()
-        .trim();
-
-
-    const selectedBox =
-      node.querySelector(
-        "[data-selected]"
-      );
-
-
-    const optionsBox =
-      node.querySelector(
-        "[data-options]"
-      );
-
-
-    const chosen =
-      [...selected]
-        .map(
-          id =>
-            members.find(
-              m =>
-                m.id === id
+      const search =
+        (
+          node
+            .querySelector(
+              "[data-search]"
             )
+            .value ||
+          ""
         )
-        .filter(Boolean);
+          .toLowerCase()
+          .trim();
 
 
-    selectedBox.innerHTML =
-      chosen.length
+      const options =
+        node.querySelector(
+          "[data-options]"
+        );
 
-        ? chosen.map(
+
+      const filtered =
+        members.filter(
+          m => {
+
+            const name =
+              (
+                m.telegram_first_name ||
+                ""
+              )
+                .toLowerCase();
+
+
+            const username =
+              (
+                m.telegram_username ||
+                ""
+              )
+                .toLowerCase();
+
+
+            return (
+              name.includes(
+                search
+              ) ||
+              username.includes(
+                search
+              )
+            );
+          }
+        );
+
+
+      options.innerHTML =
+        `
+          <div
+            class="assignee-options"
+          >
+
+            ${
+              filtered
+                .map(
+                  m => `
+                    <label
+                      class="assignee-option"
+                    >
+
+                      <input
+                        type="checkbox"
+                        data-user="${m.id}"
+                        ${
+                          selected.has(
+                            m.id
+                          )
+                            ? "checked"
+                            : ""
+                        }
+                      >
+
+                      <span>
+                        ${esc(
+                          m.telegram_first_name ||
+                          "Без имени"
+                        )}
+
+                        ${
+                          m.telegram_username
+                            ? " · @" +
+                              esc(
+                                m.telegram_username
+                              )
+                            : ""
+                        }
+                      </span>
+
+                    </label>
+                  `
+                )
+                .join("")
+            }
+
+          </div>
+        `;
+
+
+      options
+        .querySelectorAll(
+          "[data-user]"
+        )
+        .forEach(
+          checkbox => {
+
+            checkbox.addEventListener(
+              "change",
+              () => {
+
+                if (
+                  checkbox.checked
+                ) {
+
+                  selected.add(
+                    checkbox
+                      .dataset
+                      .user
+                  );
+
+                } else {
+
+                  selected.delete(
+                    checkbox
+                      .dataset
+                      .user
+                  );
+                }
+
+
+                renderPicker();
+              }
+            );
+          }
+        );
+
+
+      const selectedBox =
+        node.querySelector(
+          "[data-selected]"
+        );
+
+
+      selectedBox.innerHTML =
+        [...selected]
+          .map(
+            id =>
+              members.find(
+                m =>
+                  m.id ===
+                  id
+              )
+          )
+          .filter(Boolean)
+          .map(
             m => `
-
               <span
                 class="assignee-tag"
               >
@@ -2716,141 +3000,32 @@ function addPublicationEditor(
                 </button>
 
               </span>
-
             `
-          ).join("")
-
-        : `
-          <span
-            class="assignee-placeholder"
-          >
-            Никто не выбран
-          </span>
-        `;
-
-
-    const filtered =
-      members.filter(
-        m =>
-          (
-            m.telegram_first_name ||
-            ""
           )
-            .toLowerCase()
-            .includes(search) ||
-
-          (
-            m.telegram_username ||
-            ""
-          )
-            .toLowerCase()
-            .includes(search)
-      );
+          .join("");
 
 
-    optionsBox.innerHTML = `
+      selectedBox
+        .querySelectorAll(
+          "[data-remove]"
+        )
+        .forEach(
+          button => {
 
-      <div
-        class="assignee-options"
-      >
+            button.onclick =
+              () => {
 
-        ${
-          filtered.map(
-            m => `
+                selected.delete(
+                  button
+                    .dataset
+                    .remove
+                );
 
-              <label
-                class="assignee-option"
-              >
-
-                <input
-                  type="checkbox"
-                  data-user="${m.id}"
-                  ${
-                    selected.has(m.id)
-                      ? "checked"
-                      : ""
-                  }
-                >
-
-                <span
-                  class="assignee-option-name"
-                >
-                  ${esc(
-                    m.telegram_first_name ||
-                    "Без имени"
-                  )}
-
-                  ${
-                    m.telegram_username
-                      ? " · @" +
-                        esc(
-                          m.telegram_username
-                        )
-                      : ""
-                  }
-                </span>
-
-              </label>
-
-            `
-          ).join("")
-        }
-
-      </div>
-
-    `;
-
-
-    optionsBox
-      .querySelectorAll(
-        "[data-user]"
-      )
-      .forEach(
-        checkbox => {
-
-          checkbox.addEventListener(
-            "change",
-            () => {
-
-              checkbox.checked
-                ? selected.add(
-                    checkbox.dataset.user
-                  )
-                : selected.delete(
-                    checkbox.dataset.user
-                  );
-
-
-              renderPicker();
-            }
-          );
-
-        }
-      );
-
-
-    selectedBox
-      .querySelectorAll(
-        "[data-remove]"
-      )
-      .forEach(
-        button => {
-
-          button.addEventListener(
-            "click",
-            () => {
-
-              selected.delete(
-                button.dataset.remove
-              );
-
-              renderPicker();
-            }
-          );
-
-        }
-      );
-  }
+                renderPicker();
+              };
+          }
+        );
+    };
 
 
   node
@@ -2870,14 +3045,15 @@ function addPublicationEditor(
     .querySelector(
       ".remove-publication"
     )
-    .addEventListener(
-      "click",
+    .onclick =
       () => {
 
         if (
-          document.querySelectorAll(
-            "[data-publication]"
-          ).length <= 1
+          document
+            .querySelectorAll(
+              "[data-publication]"
+            )
+            .length <= 1
         ) {
 
           toast(
@@ -2891,17 +3067,13 @@ function addPublicationEditor(
         node.remove();
 
         renumberEditors();
-      }
+      };
+
+
+  $("publicationEditorList")
+    .appendChild(
+      node
     );
-
-
-  node._selected =
-    selected;
-
-
-  wrap.appendChild(
-    node
-  );
 
 
   renumberEditors();
@@ -2915,11 +3087,15 @@ function renumberEditors() {
       "[data-publication] .pub-number"
     )
     .forEach(
-      (el, i) => {
+      (
+        element,
+        index
+      ) => {
 
-        el.textContent =
-          `Публикация ${i + 1}`;
-
+        element.textContent =
+          `Публикация ${
+            index + 1
+          }`;
       }
     );
 }
@@ -2956,7 +3132,8 @@ async function saveContent(
       "Введите название контента"
     );
 
-    $("contentTitle").focus();
+    $("contentTitle")
+      .focus();
 
     return;
   }
@@ -2964,9 +3141,10 @@ async function saveContent(
 
   const nodes =
     [
-      ...document.querySelectorAll(
-        "[data-publication]"
-      )
+      ...document
+        .querySelectorAll(
+          "[data-publication]"
+        )
     ];
 
 
@@ -3015,72 +3193,89 @@ async function saveContent(
   }
 
 
-  saving = true;
-
-
-  const button =
-    $("saveContentBtn");
-
-
-  button.disabled =
+  saving =
     true;
 
 
-  button.textContent =
-    "Сохраняем…";
+  const submit =
+    document.querySelector(
+      '#contentForm button[type="submit"]'
+    );
+
+
+  if (submit) {
+
+    submit.disabled =
+      true;
+
+    submit.textContent =
+      "Сохраняем…";
+  }
 
 
   try {
 
-    const id =
-      $("contentId")
+    const contentId =
+      $("editingContentId")
         .value ||
       null;
 
 
-    let saved;
-
-
-    const payload = {
-
-      title,
-
-      description:
-        $("contentDescription")
-          .value
-          .trim()
-    };
+    let savedContent;
 
 
     /* CONTENT */
 
-    if (id) {
+    if (contentId) {
 
-      const result =
+      const {
+        data,
+        error
+      } =
         await db
           .from("content")
-          .update(payload)
-          .eq("id", id)
+          .update({
+            title,
+            description:
+              $("contentDescription")
+                .value
+                .trim()
+          })
+          .eq(
+            "id",
+            contentId
+          )
           .select()
           .single();
 
 
-      if (result.error)
-        throw result.error;
+      if (error) {
+        throw error;
+      }
 
 
-      saved =
-        result.data;
+      savedContent =
+        data;
 
     } else {
 
-      const result =
+      const {
+        data,
+        error
+      } =
         await db
           .from("content")
           .insert({
-            ...payload,
             project_id:
               currentProject.id,
+
+            title,
+
+            description:
+              $("contentDescription")
+                .value
+                .trim(),
+
             created_by:
               currentUser.id
           })
@@ -3088,22 +3283,33 @@ async function saveContent(
           .single();
 
 
-      if (result.error)
-        throw result.error;
+      if (error) {
+        throw error;
+      }
 
 
-      saved =
-        result.data;
+      savedContent =
+        data;
     }
 
 
-    const kept = [];
+    const editorNodes =
+      [
+        ...document
+          .querySelectorAll(
+            "[data-publication]"
+          )
+      ];
+
+
+    const keptIds =
+      [];
 
 
     /* PUBLICATIONS */
 
     for (
-      const node of nodes
+      const node of editorNodes
     ) {
 
       const get =
@@ -3115,10 +3321,10 @@ async function saveContent(
             .value;
 
 
-      const pubPayload = {
+      const payload = {
 
         content_id:
-          saved.id,
+          savedContent.id,
 
         project_id:
           currentProject.id,
@@ -3131,9 +3337,7 @@ async function saveContent(
           get("platform"),
 
         format:
-          get("format")
-            .trim() ||
-          "Пост",
+          get("format"),
 
         publication_date:
           get("date"),
@@ -3156,20 +3360,25 @@ async function saveContent(
           null,
 
         reminder_24h:
-          node.querySelector(
-            '[data-reminder="24h"]'
-          ).checked,
+          node
+            .querySelector(
+              '[data-reminder="24h"]'
+            )
+            .checked,
 
         reminder_3h:
-          node.querySelector(
-            '[data-reminder="3h"]'
-          ).checked,
+          node
+            .querySelector(
+              '[data-reminder="3h"]'
+            )
+            .checked,
 
         reminder_1h:
-          node.querySelector(
-            '[data-reminder="1h"]'
-          ).checked
-
+          node
+            .querySelector(
+              '[data-reminder="1h"]'
+            )
+            .checked
       };
 
 
@@ -3177,53 +3386,69 @@ async function saveContent(
         node.dataset.existingId;
 
 
-      let result;
+      let pub;
+      let error;
 
 
       if (existingId) {
 
-        result =
+        ({
+          data: pub,
+          error
+        } =
           await db
             .from("publications")
             .update(
-              pubPayload
+              payload
             )
             .eq(
               "id",
               existingId
             )
             .select()
-            .single();
+            .single());
 
       } else {
 
-        result =
+        ({
+          data: pub,
+          error
+        } =
           await db
             .from("publications")
             .insert(
-              pubPayload
+              payload
             )
             .select()
-            .single();
+            .single());
       }
 
 
-      if (result.error)
-        throw result.error;
+      if (error) {
+        throw error;
+      }
 
 
-      const pub =
-        result.data;
-
-
-      kept.push(
+      keptIds.push(
         pub.id
       );
 
 
       /* ASSIGNEES */
 
-      const del =
+      const selected =
+        [
+          ...(
+            node._selected ||
+            new Set()
+          )
+        ];
+
+
+      const {
+        error:
+          deleteAssigneeError
+      } =
         await db
           .from(
             "publication_assignees"
@@ -3235,52 +3460,60 @@ async function saveContent(
           );
 
 
-      if (del.error)
-        throw del.error;
+      if (
+        deleteAssigneeError
+      ) {
+        throw deleteAssigneeError;
+      }
 
 
-      const selected =
-        [
-          ...(node._selected ||
-            new Set())
-        ];
+      if (
+        selected.length
+      ) {
+
+        const rows =
+          selected.map(
+            user_id => ({
+              publication_id:
+                pub.id,
+              user_id
+            })
+          );
 
 
-      if (selected.length) {
-
-        const ins =
+        const {
+          error:
+            assigneeError
+        } =
           await db
             .from(
               "publication_assignees"
             )
             .insert(
-              selected.map(
-                user_id => ({
-                  publication_id:
-                    pub.id,
-                  user_id
-                })
-              )
+              rows
             );
 
 
-        if (ins.error)
-          throw ins.error;
+        if (
+          assigneeError
+        ) {
+          throw assigneeError;
+        }
       }
     }
 
 
-    /* DELETE REMOVED PUBLICATIONS */
+    /* REMOVED PUBLICATIONS */
 
-    if (id) {
+    if (contentId) {
 
       const removed =
         publications
           .filter(
             p =>
               p.content_id ===
-              id &&
-              !kept.includes(
+              contentId &&
+              !keptIds.includes(
                 p.id
               )
           )
@@ -3290,9 +3523,13 @@ async function saveContent(
           );
 
 
-      if (removed.length) {
+      if (
+        removed.length
+      ) {
 
-        const result =
+        const {
+          error
+        } =
           await db
             .from(
               "publications"
@@ -3304,8 +3541,9 @@ async function saveContent(
             );
 
 
-        if (result.error)
-          throw result.error;
+        if (error) {
+          throw error;
+        }
       }
     }
 
@@ -3322,7 +3560,10 @@ async function saveContent(
 
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "SAVE ERROR:",
+      error
+    );
 
     toast(
       error?.message ||
@@ -3331,13 +3572,18 @@ async function saveContent(
 
   } finally {
 
-    saving = false;
-
-    button.disabled =
+    saving =
       false;
 
-    button.textContent =
-      "Сохранить";
+
+    if (submit) {
+
+      submit.disabled =
+        false;
+
+      submit.textContent =
+        "Сохранить";
+    }
   }
 }
 
@@ -3349,12 +3595,16 @@ async function saveContent(
 async function deleteContent() {
 
   const id =
-    $("contentId")
+    $("editingContentId")
       .value;
 
 
+  if (!id) {
+    return;
+  }
+
+
   if (
-    !id ||
     !confirm(
       "Удалить этот контент и все его публикации?"
     )
@@ -3365,18 +3615,21 @@ async function deleteContent() {
 
   const {
     error
-  } = await db
-    .from("content")
-    .delete()
-    .eq(
-      "id",
-      id
-    );
+  } =
+    await db
+      .from("content")
+      .delete()
+      .eq(
+        "id",
+        id
+      );
 
 
   if (error) {
 
-    console.error(error);
+    console.error(
+      error
+    );
 
     toast(
       error.message ||
@@ -3405,6 +3658,9 @@ async function deleteContent() {
 
 function bindEvents() {
 
+
+  /* MONTH */
+
   $("prevMonth")
     ?.addEventListener(
       "click",
@@ -3412,8 +3668,12 @@ function bindEvents() {
 
         currentMonth =
           new Date(
-            currentMonth.getFullYear(),
-            currentMonth.getMonth() - 1,
+            currentMonth
+              .getFullYear(),
+
+            currentMonth
+              .getMonth() - 1,
+
             1
           );
 
@@ -3429,8 +3689,12 @@ function bindEvents() {
 
         currentMonth =
           new Date(
-            currentMonth.getFullYear(),
-            currentMonth.getMonth() + 1,
+            currentMonth
+              .getFullYear(),
+
+            currentMonth
+              .getMonth() + 1,
+
             1
           );
 
@@ -3452,7 +3716,9 @@ function bindEvents() {
     );
 
 
-  $("addContentTop")
+  /* ADD */
+
+  $("addPublicationTop")
     ?.addEventListener(
       "click",
       () =>
@@ -3463,7 +3729,7 @@ function bindEvents() {
     );
 
 
-  $("addContentBtn")
+  $("addContentInline")
     ?.addEventListener(
       "click",
       () =>
@@ -3471,7 +3737,7 @@ function bindEvents() {
     );
 
 
-  $("addPublicationBtn")
+  $("addPublication")
     ?.addEventListener(
       "click",
       () =>
@@ -3485,7 +3751,9 @@ function bindEvents() {
       () => {
 
         const date =
-          selectedDayForNewPublication ||
+          $("addPublicationForDay")
+            .dataset
+            .date ||
           isoToday();
 
 
@@ -3499,10 +3767,29 @@ function bindEvents() {
     );
 
 
+  /* FORM */
+
   $("contentForm")
     ?.addEventListener(
       "submit",
-      saveContent
+      event => {
+
+        saveContent(
+          event
+        ).catch(
+          error => {
+
+            console.error(
+              error
+            );
+
+            toast(
+              error?.message ||
+              "Ошибка сохранения"
+            );
+          }
+        );
+      }
     );
 
 
@@ -3513,23 +3800,11 @@ function bindEvents() {
     );
 
 
-  $("closeModal")
-    ?.addEventListener(
-      "click",
-      closeModal
-    );
-
-
-  $("closeDayModal")
-    ?.addEventListener(
-      "click",
-      closeDayDetails
-    );
-
+  /* CLOSE */
 
   document
     .querySelectorAll(
-      "[data-close-content-modal]"
+      "[data-close-modal]"
     )
     .forEach(
       element =>
@@ -3542,7 +3817,7 @@ function bindEvents() {
 
   document
     .querySelectorAll(
-      "[data-close-day-modal]"
+      "[data-close-day]"
     )
     .forEach(
       element =>
@@ -3553,9 +3828,11 @@ function bindEvents() {
     );
 
 
+  /* NAV */
+
   document
     .querySelectorAll(
-      ".nav-button"
+      ".nav-item"
     )
     .forEach(
       button =>
@@ -3569,30 +3846,51 @@ function bindEvents() {
     );
 
 
-  $("contentSearch")
+  $("showAllContent")
     ?.addEventListener(
-      "input",
-      renderContent
+      "click",
+      () =>
+        switchView(
+          "contentView"
+        )
     );
 
 
-  $("platformFilter")
-    ?.addEventListener(
-      "change",
-      renderContent
-    );
+  /* FILTERS */
+
+  document
+    .querySelectorAll(
+      ".filter-btn"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            activePeriod =
+              button.dataset
+                .period;
 
 
-  $("analyticsPeriod")
-    ?.addEventListener(
-      "change",
-      () => {
+            document
+              .querySelectorAll(
+                ".filter-btn"
+              )
+              .forEach(
+                other =>
+                  other.classList.toggle(
+                    "active",
+                    other ===
+                    button
+                  )
+              );
 
-        activePeriod =
-          $("analyticsPeriod")
-            .value;
 
-        renderAnalytics();
+            renderAnalytics();
+          }
+        );
       }
     );
 
@@ -3603,6 +3901,22 @@ function bindEvents() {
       renderAnalytics
     );
 
+
+  $("contentSearch")
+    ?.addEventListener(
+      "input",
+      renderContent
+    );
+
+
+  $("contentPlatformFilter")
+    ?.addEventListener(
+      "change",
+      renderContent
+    );
+
+
+  /* ESC */
 
   document.addEventListener(
     "keydown",
@@ -3623,7 +3937,7 @@ function bindEvents() {
 
 
 /* =========================
-   RUN
+   START
 ========================= */
 
 boot();

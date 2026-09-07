@@ -1489,3 +1489,32 @@ button{
   }
 
 }
+/* ===== TELEGRAM TOP SAFE AREA ===== */
+/* Опускаем заголовки и верхние кнопки
+   под нативные кнопки Telegram */
+
+@media (max-width: 700px) {
+
+  .view {
+    padding-top: calc(54px + env(safe-area-inset-top));
+  }
+
+  .view-header {
+    margin-top: 0;
+  }
+
+  .calendar-header {
+    margin-top: 0;
+  }
+
+  .content-header,
+  .team-header,
+  .analytics-header {
+    margin-top: 0;
+  }
+
+  .calendar-toolbar {
+    margin-top: 0;
+  }
+
+}

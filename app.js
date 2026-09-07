@@ -10,10 +10,18 @@ const sb = supabase.createClient(
 const $ = id => document.getElementById(id);
 
 let user = null;
+let telegramUser = null;
 let project = null;
 let members = [];
-let tasks = [];
+let contentItems = [];
+let publications = [];
 let currentDate = new Date();
+let editingContentId = null;
+
+
+/* =====================================================
+   HELPERS
+===================================================== */
 
 function msg(el, text, ok = false) {
   if (!el) return;
@@ -23,25 +31,87 @@ function msg(el, text, ok = false) {
 }
 
 function isoDate(d) {
-  return d.toISOString().slice(0, 10);
+  const local = new Date(d);
+
+  const year = local.getFullYear();
+  const month = String(
+    local.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    local.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function ruDate(s) {
+  if (!s) return "";
+
   return new Date(
     s + "T12:00:00"
-  ).toLocaleDateString("ru-RU", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric"
-  });
+  ).toLocaleDateString(
+    "ru-RU",
+    {
+      day: "2-digit",
+      month: "long"
+    }
+  );
 }
 
-/* =========================
-   TELEGRAM + SUPABASE
-========================= */
+function formatTime(time) {
+  if (!time) return "";
+
+  return String(time)
+    .slice(0, 5);
+}
+
+function escapeHtml(s) {
+  return String(
+    s ?? ""
+  ).replace(
+    /[&<>"']/g,
+    c =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[c])
+  );
+}
+
+function platformName(platform) {
+  return {
+    Telegram: "Telegram",
+    Instagram: "Instagram",
+    TikTok: "TikTok",
+    VK: "VK",
+    YouTube: "YouTube"
+  }[platform] || platform;
+}
+
+function formatName(format) {
+  return format || "Публикация";
+}
+
+function statusName(status) {
+  return {
+    planned: "Запланировано",
+    progress: "В работе",
+    done: "Готово"
+  }[status] || status;
+}
+
+
+/* =====================================================
+   TELEGRAM AUTH
+===================================================== */
 
 async function init() {
-  const tg = window.Telegram?.WebApp;
+  const tg =
+    window.Telegram?.WebApp;
 
   if (!tg) {
     showAuth(
@@ -53,89 +123,87 @@ async function init() {
   tg.ready();
   tg.expand();
 
-  /*
-    Supabase нужен только технически,
-    чтобы текущие RLS-права базы продолжали работать.
-
-    Пользователь при этом НЕ вводит:
-    - email
-    - пароль
-    - код
-    - логин
-  */
-
   let {
-    data: { session }
+    data: {
+      session
+    }
   } = await sb.auth.getSession();
+
+  /*
+    Anonymous Supabase session —
+    только технический доступ к базе.
+
+    Пользователь ничего не вводит.
+  */
 
   if (!session) {
     const {
       data,
       error
-    } = await sb.auth.signInAnonymously();
+    } =
+      await sb.auth.signInAnonymously();
 
     if (error) {
+      console.error(error);
+
       showAuth(
-        "Не удалось открыть планер: " +
-        error.message
+        "Не удалось открыть планер."
       );
+
       return;
     }
 
-    session = data.session;
+    session =
+      data.session;
   }
 
   if (!session) {
     showAuth(
-      "Не удалось создать техническую сессию."
+      "Не удалось создать сессию."
     );
+
     return;
   }
-
-  /*
-    Telegram передаёт настоящего пользователя
-    через Mini App initData.
-  */
 
   if (!tg.initData) {
     showAuth(
       "Открой планер заново из Telegram."
     );
+
     return;
   }
-
-  /*
-    Edge Function проверяет Telegram
-    и сохраняет Telegram ID в profiles.
-  */
 
   const {
     data: authData,
     error: authError
-  } = await sb.functions.invoke(
-    "telegram-auth",
-    {
-      body: {
-        initData: tg.initData
+  } =
+    await sb.functions.invoke(
+      "telegram-auth",
+      {
+        body: {
+          initData:
+            tg.initData
+        }
       }
-    }
-  );
+    );
 
   if (authError) {
     console.error(
-      "telegram-auth error:",
+      "Telegram auth:",
       authError
     );
 
     showAuth(
       "Не удалось подтвердить Telegram."
     );
+
     return;
   }
 
-  if (!authData?.ok) {
+  if (
+    !authData?.ok
+  ) {
     console.error(
-      "telegram-auth response:",
       authData
     );
 
@@ -143,252 +211,434 @@ async function init() {
       authData?.error ||
       "Не удалось подтвердить Telegram."
     );
+
     return;
   }
 
-  /*
-    Всё.
-    Пользователь считается вошедшим.
-  */
+  telegramUser =
+    authData.user;
 
   await startApp(
-    session.user,
-    authData.user
+    session.user
   );
 }
 
 function showAuth(text = "") {
   if ($("authView")) {
-    $("authView").classList.remove(
-      "hidden"
-    );
+    $("authView")
+      .classList
+      .remove("hidden");
   }
 
   if ($("appView")) {
-    $("appView").classList.add(
-      "hidden"
-    );
+    $("appView")
+      .classList
+      .add("hidden");
   }
 
   if ($("authMessage")) {
-    $("authMessage").textContent =
-      text;
+    $("authMessage")
+      .textContent = text;
   }
 }
 
+
+/* =====================================================
+   START APP
+===================================================== */
+
 async function startApp(
-  u,
-  tgUser
+  supabaseUser
 ) {
-  user = u;
+  user =
+    supabaseUser;
 
-  if ($("authView")) {
-    $("authView").classList.add(
-      "hidden"
-    );
-  }
+  $("authView")
+    ?.classList
+    .add("hidden");
 
-  if ($("appView")) {
-    $("appView").classList.remove(
-      "hidden"
-    );
-  }
+  $("appView")
+    ?.classList
+    .remove("hidden");
 
   if ($("userEmail")) {
-    $("userEmail").textContent =
-      tgUser?.username
-        ? "@" + tgUser.username
-        : tgUser?.first_name ||
-          "Telegram";
+    $("userEmail")
+      .textContent =
+      telegramUser?.username
+        ? "@" +
+          telegramUser.username
+        : "Telegram";
   }
 
   if ($("userName")) {
-    $("userName").textContent =
-      tgUser?.first_name ||
-      tgUser?.username ||
+    $("userName")
+      .textContent =
+      telegramUser?.first_name ||
       "Участник";
   }
 
   await loadProject();
 
+  await loadMembers();
+
+  await loadContent();
+
   subscribeRealtime();
 
   render();
+
+  renderAnalytics();
 }
 
-/* =========================
+
+/* =====================================================
    PROJECT
-========================= */
+===================================================== */
 
 async function loadProject() {
   const {
     data: mem
-  } = await sb
-    .from("project_members")
-    .select(
-      "project_id,role"
-    )
-    .eq(
-      "user_id",
-      user.id
-    )
-    .limit(1)
-    .maybeSingle();
+  } =
+    await sb
+      .from(
+        "project_members"
+      )
+      .select(
+        "project_id,role"
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .limit(1)
+      .maybeSingle();
 
   if (mem) {
-    const {
-      data: p
-    } = await sb
-      .from("projects")
-      .select("*")
-      .eq(
-        "id",
-        mem.project_id
-      )
-      .single();
 
-    project = p;
+    const {
+      data: p,
+      error
+    } =
+      await sb
+        .from("projects")
+        .select("*")
+        .eq(
+          "id",
+          mem.project_id
+        )
+        .single();
+
+    if (!error) {
+      project = p;
+    }
+
   } else {
+
     const {
       data,
       error
-    } = await sb.rpc(
-      "create_default_project",
-      {
-        project_name:
-          "Media Planner"
-      }
-    );
+    } =
+      await sb.rpc(
+        "create_default_project",
+        {
+          project_name:
+            "Media Planner"
+        }
+      );
 
     if (!error) {
       project = data;
     }
   }
 
-  if (project) {
-    await loadMembers();
-    await loadTasks();
-  } else {
-    if ($("projectInfo")) {
-      $("projectInfo").textContent =
-        "Проект ещё не создан.";
-    }
+  if (!project) {
+    $("projectInfo")
+      && (
+        $("projectInfo")
+          .textContent =
+          "Проект ещё не создан."
+      );
   }
 }
 
+
+/* =====================================================
+   TEAM
+===================================================== */
+
 async function loadMembers() {
-  const {
-    data
-  } = await sb
-    .from("project_members")
-    .select(
-      "user_id,role,profiles(id,name,email)"
-    )
-    .eq(
-      "project_id",
-      project.id
-    );
 
-  members =
-    (data || []).map(x => ({
-      id: x.user_id,
-      role: x.role,
-      ...(x.profiles || {})
-    }));
-}
+  if (!project) return;
 
-async function loadTasks() {
   const {
     data,
     error
-  } = await sb
-    .from("tasks")
-    .select("*")
-    .eq(
-      "project_id",
-      project.id
-    )
-    .order(
-      "date",
-      {
-        ascending: true
-      }
-    )
-    .order(
-      "time",
-      {
-        ascending: true
-      }
+  } =
+    await sb
+      .from(
+        "project_members"
+      )
+      .select(
+        "user_id,role,profiles(id,name,email,telegram_id,telegram_username,telegram_first_name,telegram_photo_url)"
+      )
+      .eq(
+        "project_id",
+        project.id
+      );
+
+  if (error) {
+    console.error(
+      "Members:",
+      error
     );
 
-  if (!error) {
-    tasks = data || [];
+    members = [];
+    return;
+  }
+
+  members =
+    (data || [])
+      .map(x => ({
+        id: x.user_id,
+        role: x.role,
+        ...(x.profiles || {})
+      }));
+}
+
+
+/* =====================================================
+   CONTENT + PUBLICATIONS
+===================================================== */
+
+async function loadContent() {
+
+  if (!project) return;
+
+  const {
+    data: contents,
+    error:
+      contentError
+  } =
+    await sb
+      .from("content")
+      .select("*")
+      .eq(
+        "project_id",
+        project.id
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false
+        }
+      );
+
+  if (contentError) {
+    console.error(
+      "Content:",
+      contentError
+    );
+
+    contentItems = [];
+    publications = [];
+
+    return;
+  }
+
+  contentItems =
+    contents || [];
+
+  const {
+    data: pubs,
+    error:
+      publicationError
+  } =
+    await sb
+      .from("publications")
+      .select("*")
+      .eq(
+        "project_id",
+        project.id
+      )
+      .order(
+        "publication_date",
+        {
+          ascending: true
+        }
+      )
+      .order(
+        "publication_time",
+        {
+          ascending: true
+        }
+      );
+
+  if (publicationError) {
+    console.error(
+      "Publications:",
+      publicationError
+    );
+
+    publications = [];
+
+    return;
+  }
+
+  publications =
+    pubs || [];
+
+  /*
+    Загружаем ответственных
+    для всех публикаций.
+  */
+
+  if (
+    publications.length
+  ) {
+
+    const ids =
+      publications.map(
+        p => p.id
+      );
+
+    const {
+      data: assignees
+    } =
+      await sb
+        .from(
+          "publication_assignees"
+        )
+        .select(
+          "publication_id,user_id"
+        )
+        .in(
+          "publication_id",
+          ids
+        );
+
+    publications =
+      publications.map(
+        p => ({
+          ...p,
+          assigneeIds:
+            (assignees || [])
+              .filter(
+                a =>
+                  a.publication_id ===
+                  p.id
+              )
+              .map(
+                a =>
+                  a.user_id
+              )
+        })
+      );
   }
 }
 
-/* =========================
+
+/* =====================================================
    REALTIME
-========================= */
+===================================================== */
 
 function subscribeRealtime() {
+
   if (!project) return;
 
   sb.channel(
-    "planner-" +
+    "media-planner-" +
     project.id
   )
+
     .on(
       "postgres_changes",
       {
         event: "*",
         schema: "public",
-        table: "tasks",
+        table: "content",
         filter:
           "project_id=eq." +
           project.id
       },
       async () => {
-        await loadTasks();
+
+        await loadContent();
+
         render();
+        renderAnalytics();
       }
     )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "publications",
+        filter:
+          "project_id=eq." +
+          project.id
+      },
+      async () => {
+
+        await loadContent();
+
+        render();
+        renderAnalytics();
+      }
+    )
+
     .on(
       "postgres_changes",
       {
         event: "*",
         schema: "public",
         table:
-          "project_members",
-        filter:
-          "project_id=eq." +
-          project.id
+          "publication_assignees"
       },
       async () => {
-        await loadMembers();
-        renderTeam();
+
+        await loadContent();
+
+        render();
+        renderAnalytics();
       }
     )
+
     .subscribe();
 }
 
-/* =========================
-   RENDER
-========================= */
+
+/* =====================================================
+   MAIN RENDER
+===================================================== */
 
 function render() {
+
   renderCalendar();
+
   renderList();
+
   renderTeam();
+
+  renderAnalytics();
 }
 
+
+/* =====================================================
+   CALENDAR
+===================================================== */
+
 function renderCalendar() {
+
   const y =
     currentDate.getFullYear();
 
   const m =
     currentDate.getMonth();
 
-  $("monthTitle").textContent =
+  $("monthTitle")
+    .textContent =
     new Date(
       y,
       m,
@@ -402,10 +652,15 @@ function renderCalendar() {
     );
 
   const first =
-    new Date(y, m, 1);
+    new Date(
+      y,
+      m,
+      1
+    );
 
   const offset =
-    (first.getDay() + 6) % 7;
+    (first.getDay() + 6) %
+    7;
 
   const days =
     new Date(
@@ -428,52 +683,80 @@ function renderCalendar() {
     i < 42;
     i++
   ) {
+
     let dayNum =
-      i - offset + 1;
+      i -
+      offset +
+      1;
 
     let d;
-    let other = false;
+    let other =
+      false;
 
     if (dayNum < 1) {
-      d = new Date(
-        y,
-        m - 1,
-        prevDays + dayNum
-      );
+
+      d =
+        new Date(
+          y,
+          m - 1,
+          prevDays +
+            dayNum
+        );
 
       other = true;
+
     } else if (
       dayNum > days
     ) {
-      d = new Date(
-        y,
-        m + 1,
-        dayNum - days
-      );
+
+      d =
+        new Date(
+          y,
+          m + 1,
+          dayNum -
+            days
+        );
 
       other = true;
+
     } else {
-      d = new Date(
-        y,
-        m,
-        dayNum
-      );
+
+      d =
+        new Date(
+          y,
+          m,
+          dayNum
+        );
     }
 
     const date =
       isoDate(d);
 
-    const isToday =
+    const today =
       date ===
       isoDate(
         new Date()
       );
 
-    const dayTasks =
-      tasks.filter(
-        t =>
-          t.date === date
-      );
+    const dayPubs =
+      publications
+        .filter(
+          p =>
+            p.publication_date ===
+            date
+        )
+        .sort(
+          (a, b) =>
+            String(
+              a.publication_time ||
+              ""
+            ).localeCompare(
+              String(
+                b.publication_time ||
+                ""
+              )
+            )
+        );
 
     cells.push(`
       <div
@@ -482,7 +765,7 @@ function renderCalendar() {
             ? "other"
             : ""
         } ${
-          isToday
+          today
             ? "today"
             : ""
         }"
@@ -493,538 +776,2204 @@ function renderCalendar() {
           ${d.getDate()}
         </div>
 
-        ${dayTasks
-          .map(
-            t => `
-              <div
-                class="task-chip ${
-                  t.status ===
-                  "done"
-                    ? "done"
-                    : ""
-                }"
-                data-task="${t.id}"
-              >
-                <span class="dot"></span>
-                ${escapeHtml(
-                  t.title
-                )}
-              </div>
-            `
-          )
-          .join("")}
+        <div class="day-publications">
+
+          ${dayPubs
+            .slice(0, 4)
+            .map(
+              p => `
+                <div
+                  class="task-chip ${
+                    p.status ===
+                    "done"
+                      ? "done"
+                      : ""
+                  }"
+                  data-publication="${p.id}"
+                >
+
+                  <span class="dot"></span>
+
+                  <span>
+                    ${
+                      p.publication_time
+                        ? formatTime(
+                            p.publication_time
+                          ) +
+                          " "
+                        : ""
+                    }
+
+                    ${escapeHtml(
+                      platformName(
+                        p.platform
+                      )
+                    )}
+                  </span>
+
+                  <span class="calendar-title">
+                    ${escapeHtml(
+                      p.title
+                    )}
+                  </span>
+
+                </div>
+              `
+            )
+            .join("")}
+
+          ${
+            dayPubs.length > 4
+              ? `
+                <div class="more-publications">
+                  +${dayPubs.length - 4}
+                </div>
+              `
+              : ""
+          }
+
+        </div>
 
       </div>
     `);
   }
 
-  $("calendarGrid").innerHTML =
+  $("calendarGrid")
+    .innerHTML =
     cells.join("");
 
   document
     .querySelectorAll(
       ".day"
     )
-    .forEach(el => {
-      el.addEventListener(
-        "dblclick",
-        () =>
-          openModal(
-            null,
-            el.dataset.date
-          )
-      );
-    });
+    .forEach(
+      el => {
+
+        el.addEventListener(
+          "dblclick",
+          () =>
+            openModal(
+              null,
+              el.dataset.date
+            )
+        );
+      }
+    );
 
   document
     .querySelectorAll(
-      ".task-chip"
+      "[data-publication]"
     )
-    .forEach(el => {
-      el.addEventListener(
-        "click",
-        e => {
-          e.stopPropagation();
+    .forEach(
+      el => {
 
-          openModal(
-            el.dataset.task
-          );
-        }
-      );
-    });
+        el.addEventListener(
+          "click",
+          e => {
+
+            e.stopPropagation();
+
+            const id =
+              el.dataset
+                .publication;
+
+            openPublication(
+              id
+            );
+          }
+        );
+      }
+    );
 }
 
+
+/* =====================================================
+   CONTENT LIST
+===================================================== */
+
 function renderList() {
+
   const q =
     (
       $("searchInput")
-        ?.value || ""
-    ).toLowerCase();
+        ?.value ||
+      ""
+    )
+      .toLowerCase()
+      .trim();
 
-  const s =
+  const status =
     $("statusFilter")
-      ?.value || "";
+      ?.value ||
+    "";
 
-  const list =
-    tasks.filter(
-      t =>
-        (
-          !q ||
-          [
-            t.title,
-            t.description,
-            t.platform,
-            t.type
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)
-        ) &&
-        (
-          !s ||
-          t.status === s
-        )
-    );
+  const platform =
+    $("platformFilter")
+      ?.value ||
+    "";
 
-  $("taskList").innerHTML =
-    list
+  const filtered =
+    publications
+      .filter(
+        p => {
+
+          const content =
+            contentItems.find(
+              c =>
+                c.id ===
+                p.content_id
+            );
+
+          const text =
+            [
+              p.title,
+              p.description,
+              p.platform,
+              p.format,
+              content?.title,
+              content?.description
+            ]
+              .join(" ")
+              .toLowerCase();
+
+          return (
+            (!q ||
+              text.includes(q)) &&
+            (!status ||
+              p.status ===
+                status) &&
+            (!platform ||
+              p.platform ===
+                platform)
+          );
+        }
+      );
+
+  const grouped = {};
+
+  filtered.forEach(
+    p => {
+
+      if (
+        !grouped[
+          p.publication_date
+        ]
+      ) {
+        grouped[
+          p.publication_date
+        ] = [];
+      }
+
+      grouped[
+        p.publication_date
+      ].push(p);
+    }
+  );
+
+  const dates =
+    Object.keys(
+      grouped
+    ).sort();
+
+  if (!dates.length) {
+
+    $("taskList")
+      .innerHTML = `
+        <div class="team-card">
+          Пока ничего нет.
+        </div>
+      `;
+
+    return;
+  }
+
+  $("taskList")
+    .innerHTML =
+    dates
       .map(
-        t => `
-          <div class="task-row">
+        date => `
 
-            <div class="task-date">
-              ${ruDate(t.date)}
-              ${
-                t.time
-                  ? " · " +
-                    t.time
-                  : ""
-              }
-            </div>
+          <div class="content-day-group">
 
-            <div>
-              <h3>
-                ${escapeHtml(
-                  t.title
-                )}
-              </h3>
+            <h3>
+              ${ruDate(date)}
+            </h3>
 
-              <div class="muted">
-                ${escapeHtml(
-                  t.platform
-                )}
-                ·
-                ${escapeHtml(
-                  t.type
-                )}
-                ${
-                  t.owner_id
-                    ? " · " +
-                      escapeHtml(
-                        memberName(
-                          t.owner_id
-                        )
-                      )
-                    : ""
+            ${grouped[date]
+              .sort(
+                (a, b) =>
+                  String(
+                    a.publication_time ||
+                    ""
+                  ).localeCompare(
+                    String(
+                      b.publication_time ||
+                      ""
+                    )
+                  )
+              )
+              .map(
+                p => {
+
+                  const content =
+                    contentItems.find(
+                      c =>
+                        c.id ===
+                        p.content_id
+                    );
+
+                  return `
+                    <div
+                      class="task-row"
+                      data-publication="${p.id}"
+                    >
+
+                      <div class="task-date">
+
+                        ${
+                          p.publication_time
+                            ? formatTime(
+                                p.publication_time
+                              )
+                            : "—"
+                        }
+
+                      </div>
+
+                      <div>
+
+                        <h3>
+                          ${escapeHtml(
+                            p.title
+                          )}
+                        </h3>
+
+                        <div class="muted">
+
+                          ${escapeHtml(
+                            platformName(
+                              p.platform
+                            )
+                          )}
+
+                          ·
+
+                          ${escapeHtml(
+                            formatName(
+                              p.format
+                            )
+                          )}
+
+                          ${
+                            content
+                              ? `
+                                · ${escapeHtml(
+                                  content.title
+                                )}
+                              `
+                              : ""
+                          }
+
+                        </div>
+
+                      </div>
+
+                      <span class="pill">
+                        ${statusName(
+                          p.status
+                        )}
+                      </span>
+
+                    </div>
+                  `;
                 }
-              </div>
-            </div>
-
-            <span class="pill">
-              ${statusName(
-                t.status
-              )}
-            </span>
+              )
+              .join("")}
 
           </div>
+
         `
       )
-      .join("") ||
-    `
-      <div class="team-card">
-        Пока ничего нет.
-      </div>
-    `;
+      .join("");
 
   document
     .querySelectorAll(
-      ".task-row"
+      "#taskList [data-publication]"
     )
     .forEach(
-      (el, i) => {
+      el => {
+
         el.addEventListener(
           "click",
           () =>
-            openModal(
-              list[i].id
+            openPublication(
+              el.dataset
+                .publication
             )
         );
       }
     );
 }
 
+
+/* =====================================================
+   TEAM
+===================================================== */
+
 function renderTeam() {
-  if (!project) return;
 
-  $("teamList").innerHTML =
-    members
+  const list =
+    members || [];
+
+  if ($("teamCount")) {
+    $("teamCount")
+      .textContent =
+      list.length;
+  }
+
+  if (!$("teamList"))
+    return;
+
+  if (!list.length) {
+
+    $("teamList")
+      .innerHTML = `
+        <div class="team-card">
+          Пока никто не использует планер.
+        </div>
+      `;
+
+    return;
+  }
+
+  $("teamList")
+    .innerHTML =
+    list
       .map(
-        m => `
-          <div class="team-member">
+        m => {
 
-            <span>
-              ${escapeHtml(
-                m.name ||
-                m.email ||
-                "Участник"
-              )}
-            </span>
+          const name =
+            m.telegram_first_name ||
+            m.name ||
+            m.email ||
+            "Участник";
 
-            <span class="pill">
-              ${m.role}
-            </span>
+          const username =
+            m.telegram_username
+              ? "@" +
+                m.telegram_username
+              : "";
 
-          </div>
-        `
+          return `
+            <div class="team-member">
+
+              <div class="team-person">
+
+                ${
+                  m.telegram_photo_url
+                    ? `
+                      <img
+                        class="team-avatar"
+                        src="${escapeHtml(
+                          m.telegram_photo_url
+                        )}"
+                        alt=""
+                      />
+                    `
+                    : `
+                      <div class="team-avatar team-avatar-placeholder">
+                        ${escapeHtml(
+                          name
+                            .charAt(0)
+                            .toUpperCase()
+                        )}
+                      </div>
+                    `
+                }
+
+                <div>
+
+                  <strong>
+                    ${escapeHtml(
+                      name
+                    )}
+                  </strong>
+
+                  ${
+                    username
+                      ? `
+                        <div class="muted">
+                          ${escapeHtml(
+                            username
+                          )}
+                        </div>
+                      `
+                      : ""
+                  }
+
+                </div>
+
+              </div>
+
+              <span class="pill">
+                ${escapeHtml(
+                  m.role ||
+                  "Участник"
+                )}
+              </span>
+
+            </div>
+          `;
+        }
       )
       .join("");
-
-  $("projectInfo").textContent =
-    `Код проекта: ${
-      project.invite_code ||
-      project.id
-    }`;
 }
 
-function memberName(id) {
-  const m =
-    members.find(
-      x => x.id === id
-    );
 
-  return (
-    m?.name ||
-    m?.email ||
-    ""
-  );
-}
+/* =====================================================
+   ANALYTICS
+===================================================== */
 
-function statusName(s) {
-  return {
-    planned:
-      "Запланировано",
-    progress:
-      "В работе",
-    done:
-      "Готово"
-  }[s] || s;
-}
+function getAnalyticsPublications() {
 
-function escapeHtml(s) {
-  return String(
-    s ?? ""
-  ).replace(
-    /[&<>"']/g,
-    c =>
-      ({
-        "&":
-          "&amp;",
-        "<":
-          "&lt;",
-        ">":
-          "&gt;",
-        '"':
-          "&quot;",
-        "'":
-          "&#039;"
-      }[c])
-  );
-}
+  const period =
+    $("analyticsPeriod")
+      ?.value ||
+    "month";
 
-/* =========================
-   VIEWS
-========================= */
-
-function switchView(
-  view
-) {
-  document
-    .querySelectorAll(
-      ".view"
-    )
-    .forEach(x =>
-      x.classList.add(
-        "hidden"
-      )
-    );
-
-  $(
-    view + "View"
-  ).classList.remove(
-    "hidden"
-  );
-
-  document
-    .querySelectorAll(
-      ".nav[data-view]"
-    )
-    .forEach(x =>
-      x.classList.toggle(
-        "active",
-        x.dataset.view ===
-          view
-      )
-    );
-
-  $("pageTitle").textContent =
-    {
-      calendar:
-        "Календарь",
-      list:
-        "Все задачи",
-      team:
-        "Команда"
-    }[view];
-}
-
-/* =========================
-   MODAL
-========================= */
-
-function openModal(
-  taskId = null,
-  date = null
-) {
-  $("taskModal")
-    .classList.remove(
-      "hidden"
-    );
-
-  $("modalMessage").textContent =
+  const platform =
+    $("analyticsPlatform")
+      ?.value ||
     "";
 
-  $("taskId").value =
-    taskId || "";
+  let list =
+    publications.slice();
 
-  const t =
-    tasks.find(
-      x =>
-        x.id === taskId
+  if (platform) {
+    list =
+      list.filter(
+        p =>
+          p.platform ===
+          platform
+      );
+  }
+
+  const now =
+    new Date();
+
+  const today =
+    isoDate(now);
+
+  if (period === "week") {
+
+    const start =
+      new Date(now);
+
+    const day =
+      (start.getDay() + 6) %
+      7;
+
+    start.setDate(
+      start.getDate() -
+      day
     );
 
-  $("modalTitle").textContent =
-    t
+    const startDate =
+      isoDate(start);
+
+    list =
+      list.filter(
+        p =>
+          p.publication_date >=
+          startDate &&
+          p.publication_date <=
+          today
+      );
+  }
+
+  if (period === "month") {
+
+    const start =
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1
+      );
+
+    const end =
+      new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0
+      );
+
+    list =
+      list.filter(
+        p =>
+          p.publication_date >=
+          isoDate(start) &&
+          p.publication_date <=
+          isoDate(end)
+      );
+  }
+
+  if (
+    period ===
+    "3months"
+  ) {
+
+    const start =
+      new Date(now);
+
+    start.setMonth(
+      start.getMonth() - 2
+    );
+
+    start.setDate(1);
+
+    list =
+      list.filter(
+        p =>
+          p.publication_date >=
+          isoDate(start) &&
+          p.publication_date <=
+          today
+      );
+  }
+
+  return list;
+}
+
+function renderAnalytics() {
+
+  const list =
+    getAnalyticsPublications();
+
+  const total =
+    list.length;
+
+  if ($("analyticsTotal")) {
+    $("analyticsTotal")
+      .textContent =
+      total;
+  }
+
+  /*
+    Для простоты считаем
+    среднюю частоту по 7 дням.
+  */
+
+  let days = 30;
+
+  const period =
+    $("analyticsPeriod")
+      ?.value ||
+    "month";
+
+  if (period === "week")
+    days = 7;
+
+  if (
+    period === "3months"
+  )
+    days = 90;
+
+  if (period === "all") {
+
+    if (list.length) {
+
+      const dates =
+        list.map(
+          p =>
+            new Date(
+              p.publication_date
+            )
+        );
+
+      const min =
+        Math.min(
+          ...dates.map(
+            d =>
+              d.getTime()
+          )
+        );
+
+      const max =
+        Math.max(
+          ...dates.map(
+            d =>
+              d.getTime()
+          )
+        );
+
+      days =
+        Math.max(
+          1,
+          Math.round(
+            (
+              max - min
+            ) /
+            86400000
+          ) + 1
+        );
+    } else {
+      days = 1;
+    }
+  }
+
+  const weeks =
+    Math.max(
+      1,
+      days / 7
+    );
+
+  if ($("analyticsPerWeek")) {
+    $("analyticsPerWeek")
+      .textContent =
+      (
+        total /
+        weeks
+      ).toFixed(1);
+  }
+
+  if ($("analyticsPerDay")) {
+    $("analyticsPerDay")
+      .textContent =
+      (
+        total /
+        days
+      ).toFixed(1);
+  }
+
+  renderAnalyticsBars(
+    "platformAnalytics",
+    countBy(
+      list,
+      p => p.platform
+    )
+  );
+
+  renderAnalyticsBars(
+    "formatAnalytics",
+    countBy(
+      list,
+      p => p.format
+    )
+  );
+
+  renderFrequency(
+    list
+  );
+
+  renderWeekdays(
+    list
+  );
+
+  renderAssignees(
+    list
+  );
+}
+
+function countBy(
+  list,
+  getter
+) {
+
+  const result = {};
+
+  list.forEach(
+    item => {
+
+      const key =
+        getter(item) ||
+        "Другое";
+
+      result[key] =
+        (result[key] ||
+          0) + 1;
+    }
+  );
+
+  return result;
+}
+
+function renderAnalyticsBars(
+  id,
+  data
+) {
+
+  const el =
+    $(id);
+
+  if (!el) return;
+
+  const entries =
+    Object.entries(
+      data
+    ).sort(
+      (a, b) =>
+        b[1] - a[1]
+    );
+
+  const total =
+    entries.reduce(
+      (sum, x) =>
+        sum + x[1],
+      0
+    );
+
+  if (!entries.length) {
+
+    el.innerHTML =
+      `<div class="muted">
+        Нет данных
+      </div>`;
+
+    return;
+  }
+
+  el.innerHTML =
+    entries
+      .map(
+        ([name, count]) => {
+
+          const percent =
+            total
+              ? Math.round(
+                  count /
+                  total *
+                  100
+                )
+              : 0;
+
+          return `
+            <div class="analytics-bar-row">
+
+              <div class="analytics-bar-top">
+
+                <span>
+                  ${escapeHtml(
+                    name
+                  )}
+                </span>
+
+                <strong>
+                  ${percent}%
+                </strong>
+
+              </div>
+
+              <div class="analytics-bar-track">
+
+                <div
+                  class="analytics-bar-fill"
+                  style="width:${percent}%"
+                ></div>
+
+              </div>
+
+            </div>
+          `;
+        }
+      )
+      .join("");
+}
+
+function renderFrequency(
+  list
+) {
+
+  const el =
+    $("frequencyAnalytics");
+
+  if (!el) return;
+
+  const data =
+    countBy(
+      list,
+      p => p.platform
+    );
+
+  const total =
+    list.length;
+
+  if (!total) {
+
+    el.innerHTML =
+      `<div class="muted">
+        Нет данных
+      </div>`;
+
+    return;
+  }
+
+  const period =
+    $("analyticsPeriod")
+      ?.value ||
+    "month";
+
+  let days = 30;
+
+  if (period === "week")
+    days = 7;
+
+  if (
+    period ===
+    "3months"
+  )
+    days = 90;
+
+  const weeks =
+    Math.max(
+      1,
+      days / 7
+    );
+
+  el.innerHTML = `
+    <table>
+
+      <thead>
+
+        <tr>
+          <th>Соцсеть</th>
+          <th>Публикаций</th>
+          <th>В неделю</th>
+        </tr>
+
+      </thead>
+
+      <tbody>
+
+        ${Object.entries(
+          data
+        )
+          .sort(
+            (a, b) =>
+              b[1] -
+              a[1]
+          )
+          .map(
+            ([name, count]) => `
+              <tr>
+
+                <td>
+                  ${escapeHtml(
+                    name
+                  )}
+                </td>
+
+                <td>
+                  ${count}
+                </td>
+
+                <td>
+                  ${(
+                    count /
+                    weeks
+                  ).toFixed(1)}
+                </td>
+
+              </tr>
+            `
+          )
+          .join("")}
+
+      </tbody>
+
+    </table>
+  `;
+}
+
+function renderWeekdays(
+  list
+) {
+
+  const names = [
+    "Пн",
+    "Вт",
+    "Ср",
+    "Чт",
+    "Пт",
+    "Сб",
+    "Вс"
+  ];
+
+  const data = {};
+
+  names.forEach(
+    x => {
+      data[x] = 0;
+    }
+  );
+
+  list.forEach(
+    p => {
+
+      const d =
+        new Date(
+          p.publication_date +
+          "T12:00:00"
+        );
+
+      const index =
+        (
+          d.getDay() +
+          6
+        ) % 7;
+
+      data[
+        names[index]
+      ]++;
+    }
+  );
+
+  renderAnalyticsBars(
+    "weekdayAnalytics",
+    data
+  );
+}
+
+function renderAssignees(
+  list
+) {
+
+  const counts = {};
+
+  list.forEach(
+    p => {
+
+      (
+        p.assigneeIds ||
+        []
+      ).forEach(
+        id => {
+
+          counts[id] =
+            (
+              counts[id] ||
+              0
+            ) + 1;
+        }
+      );
+    }
+  );
+
+  const named = {};
+
+  Object.entries(
+    counts
+  ).forEach(
+    ([id, count]) => {
+
+      const member =
+        members.find(
+          m =>
+            m.id === id
+        );
+
+      const name =
+        member?.telegram_first_name ||
+        member?.name ||
+        member?.email ||
+        "Участник";
+
+      named[name] =
+        count;
+    }
+  );
+
+  renderAnalyticsBars(
+    "assigneeAnalytics",
+    named
+  );
+}
+
+
+/* =====================================================
+   MODAL — NEW / EDIT CONTENT
+===================================================== */
+
+function openModal(
+  contentId = null,
+  date = null
+) {
+
+  editingContentId =
+    contentId;
+
+  $("taskModal")
+    .classList
+    .remove("hidden");
+
+  $("modalMessage")
+    .textContent = "";
+
+  const content =
+    contentItems.find(
+      c =>
+        c.id ===
+        contentId
+    );
+
+  $("modalTitle")
+    .textContent =
+    content
       ? "Редактировать контент"
       : "Новый контент";
 
-  $("deleteTaskBtn")
-    .classList.toggle(
-      "hidden",
-      !t
+  $("contentTitle")
+    .value =
+    content?.title ||
+    "";
+
+  $("contentDescription")
+    .value =
+    content?.description ||
+    "";
+
+  $("publicationsList")
+    .innerHTML = "";
+
+  const pubs =
+    contentId
+      ? publications
+          .filter(
+            p =>
+              p.content_id ===
+              contentId
+          )
+          .sort(
+            (a, b) =>
+              String(
+                a.publication_time ||
+                ""
+              ).localeCompare(
+                String(
+                  b.publication_time ||
+                  ""
+                )
+              )
+          )
+      : [];
+
+  if (pubs.length) {
+
+    pubs.forEach(
+      p =>
+        addPublicationEditor(
+          p
+        )
     );
 
-  $("taskTitle").value =
-    t?.title || "";
+  } else {
 
-  $("taskDate").value =
-    t?.date ||
-    date ||
+    addPublicationEditor({
+      publication_date:
+        date ||
+        isoDate(
+          currentDate
+        ),
+      publication_time:
+        "",
+      platform:
+        "Telegram",
+      format:
+        "Пост",
+      title:
+        content?.title ||
+        "",
+      status:
+        "planned",
+      description:
+        "",
+      link:
+        "",
+      reminder_24h:
+        true,
+      reminder_3h:
+        false,
+      reminder_1h:
+        false,
+      assigneeIds:
+        []
+    });
+  }
+
+  $("deleteContentBtn")
+    .classList
+    .toggle(
+      "hidden",
+      !content
+    );
+}
+
+function closeModal() {
+  $("taskModal")
+    .classList
+    .add("hidden");
+
+  editingContentId =
+    null;
+}
+
+
+/* =====================================================
+   PUBLICATION EDITOR
+===================================================== */
+
+function getFormats(
+  platform
+) {
+
+  const formats = {
+    Telegram: [
+      "Пост",
+      "Видео",
+      "Фото",
+      "Опрос"
+    ],
+
+    Instagram: [
+      "Пост",
+      "Reels",
+      "Stories"
+    ],
+
+    TikTok: [
+      "Reels",
+      "Видео"
+    ],
+
+    VK: [
+      "Пост",
+      "Клип",
+      "Видео",
+      "История"
+    ],
+
+    YouTube: [
+      "Видео",
+      "Shorts",
+      "Пост"
+    ]
+  };
+
+  return (
+    formats[
+      platform
+    ] ||
+    [
+      "Публикация"
+    ]
+  );
+}
+
+function addPublicationEditor(
+  publication = {}
+) {
+
+  const template =
+    $("publicationTemplate");
+
+  const clone =
+    template
+      .content
+      .cloneNode(true);
+
+  const editor =
+    clone.querySelector(
+      ".publication-editor"
+    );
+
+  editor.dataset.id =
+    publication.id ||
+    "";
+
+  const platform =
+    editor.querySelector(
+      ".publication-platform"
+    );
+
+  const format =
+    editor.querySelector(
+      ".publication-format"
+    );
+
+  const date =
+    editor.querySelector(
+      ".publication-date"
+    );
+
+  const time =
+    editor.querySelector(
+      ".publication-time"
+    );
+
+  const title =
+    editor.querySelector(
+      ".publication-title"
+    );
+
+  const status =
+    editor.querySelector(
+      ".publication-status"
+    );
+
+  const link =
+    editor.querySelector(
+      ".publication-link"
+    );
+
+  const description =
+    editor.querySelector(
+      ".publication-description"
+    );
+
+  const rem24 =
+    editor.querySelector(
+      ".publication-rem24"
+    );
+
+  const rem3 =
+    editor.querySelector(
+      ".publication-rem3"
+    );
+
+  const rem1 =
+    editor.querySelector(
+      ".publication-rem1"
+    );
+
+  platform.value =
+    publication.platform ||
+    "Telegram";
+
+  fillFormats(
+    format,
+    platform.value,
+    publication.format
+  );
+
+  date.value =
+    publication.publication_date ||
     isoDate(
       currentDate
     );
 
-  $("taskTime").value =
-    t?.time || "";
+  time.value =
+    publication.publication_time
+      ? formatTime(
+          publication.publication_time
+        )
+      : "";
 
-  $("taskPlatform").value =
-    t?.platform ||
-    "Instagram";
+  title.value =
+    publication.title ||
+    "";
 
-  $("taskType").value =
-    t?.type ||
-    "Reels";
+  status.value =
+    publication.status ||
+    "planned";
 
-  $("taskOwner").innerHTML =
-    `
-      <option value="">
-        Не назначен
-      </option>
-    ` +
-    members
+  link.value =
+    publication.link ||
+    "";
+
+  description.value =
+    publication.description ||
+    "";
+
+  rem24.checked =
+    publication.reminder_24h ??
+    true;
+
+  rem3.checked =
+    publication.reminder_3h ??
+    false;
+
+  rem1.checked =
+    publication.reminder_1h ??
+    false;
+
+  platform.addEventListener(
+    "change",
+    () => {
+
+      fillFormats(
+        format,
+        platform.value
+      );
+    }
+  );
+
+  const pickerButton =
+    editor.querySelector(
+      ".assignee-picker-button"
+    );
+
+  const dropdown =
+    editor.querySelector(
+      ".assignee-dropdown"
+    );
+
+  pickerButton.addEventListener(
+    "click",
+    e => {
+
+      e.stopPropagation();
+
+      dropdown
+        .classList
+        .toggle("hidden");
+
+      renderAssigneeOptions(
+        editor
+      );
+    }
+  );
+
+  const search =
+    editor.querySelector(
+      ".assignee-search"
+    );
+
+  search.addEventListener(
+    "input",
+    () =>
+      renderAssigneeOptions(
+        editor
+      )
+  );
+
+  const existing =
+    publication.assigneeIds ||
+    [];
+
+  editor.dataset.assignees =
+    JSON.stringify(
+      existing
+    );
+
+  renderSelectedAssignees(
+    editor
+  );
+
+  editor
+    .querySelector(
+      ".remove-publication-btn"
+    )
+    .addEventListener(
+      "click",
+      () => {
+
+        editor.remove();
+
+        renumberPublications();
+      }
+    );
+
+  $("publicationsList")
+    .appendChild(
+      clone
+    );
+
+  renumberPublications();
+}
+
+function fillFormats(
+  select,
+  platform,
+  selected = null
+) {
+
+  const formats =
+    getFormats(
+      platform
+    );
+
+  select.innerHTML =
+    formats
       .map(
-        m => `
-          <option value="${m.id}">
+        f => `
+          <option value="${escapeHtml(
+            f
+          )}">
             ${escapeHtml(
-              m.name ||
-              m.email ||
-              "Участник"
+              f
             )}
           </option>
         `
       )
       .join("");
 
-  $("taskOwner").value =
-    t?.owner_id || "";
-
-  $("taskStatus").value =
-    t?.status ||
-    "planned";
-
-  $("taskDescription").value =
-    t?.description ||
-    "";
-
-  $("taskLink").value =
-    t?.link || "";
-
-  $("rem24").checked =
-    t?.reminder_24h ??
-    true;
-
-  $("rem3").checked =
-    t?.reminder_3h ??
-    false;
-
-  $("rem1").checked =
-    t?.reminder_1h ??
-    false;
+  if (
+    selected &&
+    formats.includes(
+      selected
+    )
+  ) {
+    select.value =
+      selected;
+  }
 }
 
-function closeModal() {
-  $("taskModal")
-    .classList.add(
-      "hidden"
+function renumberPublications() {
+
+  document
+    .querySelectorAll(
+      "#publicationsList .publication-editor"
+    )
+    .forEach(
+      (el, index) => {
+
+        const number =
+          el.querySelector(
+            ".publication-number"
+          );
+
+        if (number) {
+          number.textContent =
+            `Публикация ${
+              index + 1
+            }`;
+        }
+      }
     );
 }
 
-/* =========================
-   TASKS
-========================= */
 
-async function saveTask() {
-  if (!project) return;
+/* =====================================================
+   ASSIGNEES
+===================================================== */
 
-  const title =
-    $("taskTitle")
-      .value
-      .trim();
+function renderAssigneeOptions(
+  editor
+) {
 
-  const date =
-    $("taskDate").value;
-
-  if (!title || !date) {
-    msg(
-      $("modalMessage"),
-      "Заполни название и дату."
+  const options =
+    editor.querySelector(
+      ".assignee-options"
     );
+
+  const search =
+    editor.querySelector(
+      ".assignee-search"
+    );
+
+  const query =
+    (
+      search.value ||
+      ""
+    ).toLowerCase();
+
+  let selected = [];
+
+  try {
+    selected =
+      JSON.parse(
+        editor.dataset
+          .assignees ||
+        "[]"
+      );
+  } catch {
+    selected = [];
+  }
+
+  const filtered =
+    members.filter(
+      m => {
+
+        const name =
+          m.telegram_first_name ||
+          m.name ||
+          m.email ||
+          "";
+
+        const username =
+          m.telegram_username ||
+          "";
+
+        return (
+          !query ||
+          (
+            name +
+            " " +
+            username
+          )
+            .toLowerCase()
+            .includes(
+              query
+            )
+        );
+      }
+    );
+
+  if (!filtered.length) {
+
+    options.innerHTML =
+      `<div class="muted">
+        Участники не найдены
+      </div>`;
+
     return;
   }
 
-  const payload = {
-    project_id:
-      project.id,
+  options.innerHTML =
+    filtered
+      .map(
+        m => {
 
-    title,
+          const name =
+            m.telegram_first_name ||
+            m.name ||
+            m.email ||
+            "Участник";
 
-    description:
-      $("taskDescription")
-        .value,
+          const checked =
+            selected.includes(
+              m.id
+            );
 
-    date,
+          return `
+            <label class="assignee-option">
 
-    time:
-      $("taskTime")
-        .value ||
-      null,
+              <input
+                type="checkbox"
+                data-assignee="${m.id}"
+                ${
+                  checked
+                    ? "checked"
+                    : ""
+                }
+              />
 
-    platform:
-      $("taskPlatform")
-        .value,
+              <span>
 
-    type:
-      $("taskType")
-        .value,
+                ${escapeHtml(
+                  name
+                )}
 
-    owner_id:
-      $("taskOwner")
-        .value ||
-      null,
+                ${
+                  m.telegram_username
+                    ? `
+                      <small>
+                        @${escapeHtml(
+                          m.telegram_username
+                        )}
+                      </small>
+                    `
+                    : ""
+                }
 
-    status:
-      $("taskStatus")
-        .value,
+              </span>
 
-    link:
-      $("taskLink")
-        .value ||
-      null,
+            </label>
+          `;
+        }
+      )
+      .join("");
 
-    reminder_24h:
-      $("rem24")
-        .checked,
+  options
+    .querySelectorAll(
+      "[data-assignee]"
+    )
+    .forEach(
+      checkbox => {
 
-    reminder_3h:
-      $("rem3")
-        .checked,
+        checkbox.addEventListener(
+          "change",
+          () => {
 
-    reminder_1h:
-      $("rem1")
-        .checked,
+            let ids = [];
 
-    created_by:
-      user.id,
+            try {
+              ids =
+                JSON.parse(
+                  editor.dataset
+                    .assignees ||
+                  "[]"
+                );
+            } catch {
+              ids = [];
+            }
 
-    updated_at:
-      new Date()
-        .toISOString()
-  };
+            const id =
+              checkbox.dataset
+                .assignee;
 
-  const id =
-    $("taskId").value;
+            if (
+              checkbox.checked
+            ) {
 
-  const {
-    error
-  } = id
-    ? await sb
-        .from("tasks")
-        .update(
-          payload
-        )
-        .eq(
-          "id",
-          id
-        )
-    : await sb
-        .from("tasks")
-        .insert(
-          payload
+              if (
+                !ids.includes(
+                  id
+                )
+              ) {
+                ids.push(id);
+              }
+
+            } else {
+
+              ids =
+                ids.filter(
+                  x =>
+                    x !== id
+                );
+            }
+
+            editor.dataset.assignees =
+              JSON.stringify(
+                ids
+              );
+
+            renderSelectedAssignees(
+              editor
+            );
+          }
         );
+      }
+    );
+}
 
-  if (error) {
+function renderSelectedAssignees(
+  editor
+) {
+
+  const container =
+    editor.querySelector(
+      ".selected-assignees"
+    );
+
+  let ids = [];
+
+  try {
+    ids =
+      JSON.parse(
+        editor.dataset
+          .assignees ||
+        "[]"
+      );
+  } catch {
+    ids = [];
+  }
+
+  if (!ids.length) {
+
+    container.innerHTML =
+      `<span class="muted">
+        Ответственные не выбраны
+      </span>`;
+
+    return;
+  }
+
+  container.innerHTML =
+    ids
+      .map(
+        id => {
+
+          const member =
+            members.find(
+              m =>
+                m.id === id
+            );
+
+          const name =
+            member?.telegram_first_name ||
+            member?.name ||
+            member?.email ||
+            "Участник";
+
+          return `
+            <span class="assignee-tag">
+              ${escapeHtml(
+                name
+              )}
+
+              <button
+                type="button"
+                data-remove-assignee="${id}"
+              >
+                ×
+              </button>
+            </span>
+          `;
+        }
+      )
+      .join("");
+
+  container
+    .querySelectorAll(
+      "[data-remove-assignee]"
+    )
+    .forEach(
+      button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            const id =
+              button.dataset
+                .removeAssignee;
+
+            ids =
+              ids.filter(
+                x =>
+                  x !== id
+              );
+
+            editor.dataset.assignees =
+              JSON.stringify(
+                ids
+              );
+
+            renderSelectedAssignees(
+              editor
+            );
+
+            renderAssigneeOptions(
+              editor
+            );
+          }
+        );
+      }
+    );
+}
+
+
+/* =====================================================
+   SAVE CONTENT
+===================================================== */
+
+async function saveTask() {
+
+  if (!project) return;
+
+  const title =
+    $("contentTitle")
+      .value
+      .trim();
+
+  if (!title) {
+
     msg(
       $("modalMessage"),
-      error.message
+      "Напиши название контента."
     );
+
     return;
+  }
+
+  const editors =
+    Array.from(
+      document.querySelectorAll(
+        "#publicationsList .publication-editor"
+      )
+    );
+
+  if (!editors.length) {
+
+    msg(
+      $("modalMessage"),
+      "Добавь хотя бы одну публикацию."
+    );
+
+    return;
+  }
+
+  /*
+    Сначала создаём/обновляем
+    сам контент.
+  */
+
+  let contentId =
+    editingContentId;
+
+  let contentError;
+
+  if (contentId) {
+
+    const result =
+      await sb
+        .from("content")
+        .update({
+          title,
+          description:
+            $("contentDescription")
+              .value,
+          updated_at:
+            new Date()
+              .toISOString()
+        })
+        .eq(
+          "id",
+          contentId
+        );
+
+    contentError =
+      result.error;
+
+  } else {
+
+    const result =
+      await sb
+        .from("content")
+        .insert({
+          project_id:
+            project.id,
+          title,
+          description:
+            $("contentDescription")
+              .value,
+          created_by:
+            user.id
+        })
+        .select()
+        .single();
+
+    contentError =
+      result.error;
+
+    if (!contentError) {
+      contentId =
+        result.data.id;
+    }
+  }
+
+  if (contentError) {
+
+    msg(
+      $("modalMessage"),
+      contentError.message
+    );
+
+    return;
+  }
+
+  /*
+    Сохраняем публикации.
+  */
+
+  const oldPublications =
+    publications.filter(
+      p =>
+        p.content_id ===
+        contentId
+    );
+
+  const keptIds = [];
+
+  for (
+    const editor
+    of editors
+  ) {
+
+    const id =
+      editor.dataset.id ||
+      "";
+
+    const platform =
+      editor.querySelector(
+        ".publication-platform"
+      ).value;
+
+    const format =
+      editor.querySelector(
+        ".publication-format"
+      ).value;
+
+    const date =
+      editor.querySelector(
+        ".publication-date"
+      ).value;
+
+    const time =
+      editor.querySelector(
+        ".publication-time"
+      ).value ||
+      null;
+
+    const publicationTitle =
+      editor.querySelector(
+        ".publication-title"
+      ).value
+        .trim() ||
+      title;
+
+    if (!date) {
+
+      msg(
+        $("modalMessage"),
+        "У каждой публикации должна быть дата."
+      );
+
+      return;
+    }
+
+    const payload = {
+
+      content_id:
+        contentId,
+
+      project_id:
+        project.id,
+
+      title:
+        publicationTitle,
+
+      platform,
+
+      format,
+
+      publication_date:
+        date,
+
+      publication_time:
+        time,
+
+      status:
+        editor.querySelector(
+          ".publication-status"
+        ).value,
+
+      description:
+        editor.querySelector(
+          ".publication-description"
+        ).value,
+
+      link:
+        editor.querySelector(
+          ".publication-link"
+        ).value ||
+        null,
+
+      reminder_24h:
+        editor.querySelector(
+          ".publication-rem24"
+        ).checked,
+
+      reminder_3h:
+        editor.querySelector(
+          ".publication-rem3"
+        ).checked,
+
+      reminder_1h:
+        editor.querySelector(
+          ".publication-rem1"
+        ).checked,
+
+      updated_at:
+        new Date()
+          .toISOString()
+    };
+
+    let saved;
+
+    if (id) {
+
+      const {
+        data,
+        error
+      } =
+        await sb
+          .from(
+            "publications"
+          )
+          .update(
+            payload
+          )
+          .eq(
+            "id",
+            id
+          )
+          .select()
+          .single();
+
+      if (error) {
+
+        msg(
+          $("modalMessage"),
+          error.message
+        );
+
+        return;
+      }
+
+      saved = data;
+
+    } else {
+
+      const {
+        data,
+        error
+      } =
+        await sb
+          .from(
+            "publications"
+          )
+          .insert(
+            payload
+          )
+          .select()
+          .single();
+
+      if (error) {
+
+        msg(
+          $("modalMessage"),
+          error.message
+        );
+
+        return;
+      }
+
+      saved = data;
+    }
+
+    keptIds.push(
+      saved.id
+    );
+
+    /*
+      Обновляем ответственных.
+    */
+
+    await sb
+      .from(
+        "publication_assignees"
+      )
+      .delete()
+      .eq(
+        "publication_id",
+        saved.id
+      );
+
+    let assigneeIds = [];
+
+    try {
+      assigneeIds =
+        JSON.parse(
+          editor.dataset
+            .assignees ||
+          "[]"
+        );
+    } catch {
+      assigneeIds = [];
+    }
+
+    if (
+      assigneeIds.length
+    ) {
+
+      const rows =
+        assigneeIds.map(
+          userId => ({
+            publication_id:
+              saved.id,
+            user_id:
+              userId
+          })
+        );
+
+      const {
+        error
+      } =
+        await sb
+          .from(
+            "publication_assignees"
+          )
+          .insert(
+            rows
+          );
+
+      if (error) {
+
+        msg(
+          $("modalMessage"),
+          error.message
+        );
+
+        return;
+      }
+    }
+  }
+
+  /*
+    Удаляем публикации,
+    которые были убраны
+    из редактора.
+  */
+
+  const removed =
+    oldPublications.filter(
+      p =>
+        !keptIds.includes(
+          p.id
+        )
+    );
+
+  for (
+    const p of removed
+  ) {
+
+    await sb
+      .from(
+        "publications"
+      )
+      .delete()
+      .eq(
+        "id",
+        p.id
+      );
   }
 
   closeModal();
 
-  await loadTasks();
+  await loadContent();
 
   render();
+
+  renderAnalytics();
 }
 
-async function deleteTask() {
-  const id =
-    $("taskId").value;
 
-  if (!id) return;
+/* =====================================================
+   OPEN ONE PUBLICATION
+===================================================== */
+
+function openPublication(
+  publicationId
+) {
+
+  const p =
+    publications.find(
+      x =>
+        x.id ===
+        publicationId
+    );
+
+  if (!p) return;
+
+  openModal(
+    p.content_id
+  );
+}
+
+
+/* =====================================================
+   DELETE CONTENT
+===================================================== */
+
+async function deleteContent() {
+
+  if (!editingContentId)
+    return;
 
   if (
     !confirm(
-      "Удалить этот контент?"
+      "Удалить этот контент и все его публикации?"
     )
   ) {
     return;
@@ -1032,66 +2981,78 @@ async function deleteTask() {
 
   const {
     error
-  } = await sb
-    .from("tasks")
-    .delete()
-    .eq(
-      "id",
-      id
-    );
+  } =
+    await sb
+      .from("content")
+      .delete()
+      .eq(
+        "id",
+        editingContentId
+      );
 
   if (error) {
+
     msg(
       $("modalMessage"),
       error.message
     );
+
     return;
   }
 
   closeModal();
 
-  await loadTasks();
+  await loadContent();
 
   render();
+
+  renderAnalytics();
 }
 
-/* =========================
-   PROJECT JOIN
-========================= */
+
+/* =====================================================
+   JOIN PROJECT
+===================================================== */
 
 async function joinProject() {
+
+  const input =
+    $("projectCodeInput");
+
+  if (!input) return;
+
   const code =
-    $("projectCodeInput")
-      .value
-      .trim();
+    input.value.trim();
 
   if (!code) return;
 
   const {
     data,
     error
-  } = await sb.rpc(
-    "join_project",
-    {
-      project_uuid:
-        code
-    }
-  );
+  } =
+    await sb.rpc(
+      "join_project",
+      {
+        project_uuid:
+          code
+      }
+    );
 
   if (error) {
+
     msg(
       $("projectInfo"),
       error.message
     );
+
     return;
   }
 
   project = data;
 
   await loadMembers();
-  await loadTasks();
 
-  subscribeRealtime();
+  await loadContent();
 
   render();
 
@@ -1102,116 +3063,219 @@ async function joinProject() {
   );
 }
 
-/* =========================
-   BUTTONS
-========================= */
 
-if ($("logoutBtn")) {
-  $("logoutBtn").onclick =
-    async () => {
-      /*
-        Выход пользователю не нужен,
-        поэтому просто перезагружаем приложение.
-      */
+/* =====================================================
+   VIEW SWITCHING
+===================================================== */
 
-      location.reload();
-    };
+function switchView(
+  view
+) {
+
+  document
+    .querySelectorAll(
+      ".view"
+    )
+    .forEach(
+      x =>
+        x.classList.add(
+          "hidden"
+        )
+    );
+
+  const target =
+    $(view + "View");
+
+  if (target) {
+    target.classList.remove(
+      "hidden"
+    );
+  }
+
+  document
+    .querySelectorAll(
+      ".nav[data-view]"
+    )
+    .forEach(
+      x =>
+        x.classList.toggle(
+          "active",
+          x.dataset.view ===
+            view
+        )
+    );
+
+  const titles = {
+    calendar:
+      "Календарь",
+    list:
+      "Контент",
+    team:
+      "Команда",
+    analytics:
+      "Анализ"
+  };
+
+  if ($("pageTitle")) {
+    $("pageTitle")
+      .textContent =
+      titles[view] ||
+      "Media Planner";
+  }
+
+  if (
+    view ===
+    "analytics"
+  ) {
+    renderAnalytics();
+  }
+
+  if (
+    view ===
+    "team"
+  ) {
+    renderTeam();
+  }
 }
 
-$("addTaskBtn").onclick =
-  () => openModal();
 
-$("closeModal").onclick =
-  closeModal;
+/* =====================================================
+   BUTTONS
+===================================================== */
 
-$("cancelTaskBtn").onclick =
-  closeModal;
+$("addTaskBtn")?.addEventListener(
+  "click",
+  () =>
+    openModal()
+);
 
-$("saveTaskBtn").onclick =
-  saveTask;
+$("closeModal")?.addEventListener(
+  "click",
+  closeModal
+);
 
-$("deleteTaskBtn").onclick =
-  deleteTask;
+$("cancelTaskBtn")?.addEventListener(
+  "click",
+  closeModal
+);
 
-$("prevMonth").onclick =
+$("saveTaskBtn")?.addEventListener(
+  "click",
+  saveTask
+);
+
+$("deleteContentBtn")?.addEventListener(
+  "click",
+  deleteContent
+);
+
+$("addPublicationBtn")?.addEventListener(
+  "click",
+  () =>
+    addPublicationEditor({
+      publication_date:
+        isoDate(
+          currentDate
+        ),
+      platform:
+        "Telegram",
+      format:
+        "Пост",
+      status:
+        "planned",
+      assigneeIds:
+        []
+    })
+);
+
+$("prevMonth")?.addEventListener(
+  "click",
   () => {
+
     currentDate.setMonth(
-      currentDate.getMonth() - 1
+      currentDate.getMonth() -
+      1
     );
 
     renderCalendar();
-  };
+  }
+);
 
-$("nextMonth").onclick =
+$("nextMonth")?.addEventListener(
+  "click",
   () => {
+
     currentDate.setMonth(
-      currentDate.getMonth() + 1
+      currentDate.getMonth() +
+      1
     );
 
     renderCalendar();
-  };
+  }
+);
 
-$("todayBtn").onclick =
+$("todayBtn")?.addEventListener(
+  "click",
   () => {
+
     currentDate =
       new Date();
 
     renderCalendar();
-  };
+  }
+);
 
-$("searchInput").oninput =
-  renderList;
+$("searchInput")?.addEventListener(
+  "input",
+  renderList
+);
 
-$("statusFilter").onchange =
-  renderList;
+$("statusFilter")?.addEventListener(
+  "change",
+  renderList
+);
 
-$("joinProjectBtn").onclick =
-  joinProject;
+$("platformFilter")?.addEventListener(
+  "change",
+  renderList
+);
+
+$("analyticsPeriod")?.addEventListener(
+  "change",
+  renderAnalytics
+);
+
+$("analyticsPlatform")?.addEventListener(
+  "change",
+  renderAnalytics
+);
+
+$("joinProjectBtn")?.addEventListener(
+  "click",
+  joinProject
+);
 
 document
   .querySelectorAll(
     ".nav[data-view]"
   )
-  .forEach(x => {
-    x.onclick = () =>
-      switchView(
-        x.dataset.view
-      );
-  });
+  .forEach(
+    button => {
 
-$("notifyBtn").onclick =
-  async () => {
-    if (
-      !(
-        "Notification"
-        in window
-      )
-    ) {
-      alert(
-        "Браузер не поддерживает уведомления."
-      );
-      return;
-    }
-
-    const p =
-      await Notification
-        .requestPermission();
-
-    if (
-      p === "granted"
-    ) {
-      new Notification(
-        "Media Planner",
-        {
-          body:
-            "Уведомления включены."
-        }
+      button.addEventListener(
+        "click",
+        () =>
+          switchView(
+            button.dataset
+              .view
+          )
       );
     }
-  };
+  );
 
-/* =========================
+
+/* =====================================================
    START
-========================= */
+===================================================== */
 
 init();

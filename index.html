@@ -25,6 +25,7 @@
     </div>
   </div>
 
+
   <main id="app" class="app hidden">
 
     <header class="topbar">
@@ -34,21 +35,59 @@
       </div>
     </header>
 
+
     <!-- КАЛЕНДАРЬ -->
+
     <section id="calendarView" class="view active">
 
       <div class="page-head">
+
         <div>
           <h2>Календарь</h2>
           <p id="monthLabel"></p>
         </div>
 
         <div class="calendar-actions">
-          <button id="prevMonth" class="icon-btn" aria-label="Предыдущий месяц">‹</button>
-          <button id="todayBtn" class="today-btn">Сегодня</button>
-          <button id="nextMonth" class="icon-btn" aria-label="Следующий месяц">›</button>
+
+          <button
+            id="addPublicationTop"
+            class="primary-btn top-add-btn"
+            type="button"
+            aria-label="Добавить публикацию"
+          >
+            +
+          </button>
+
+          <button
+            id="prevMonth"
+            class="icon-btn"
+            type="button"
+            aria-label="Предыдущий месяц"
+          >
+            ‹
+          </button>
+
+          <button
+            id="todayBtn"
+            class="today-btn"
+            type="button"
+          >
+            Сегодня
+          </button>
+
+          <button
+            id="nextMonth"
+            class="icon-btn"
+            type="button"
+            aria-label="Следующий месяц"
+          >
+            ›
+          </button>
+
         </div>
+
       </div>
+
 
       <div class="calendar-card">
 
@@ -66,9 +105,19 @@
 
       </div>
 
+
       <div class="section-head">
+
         <h3>Ближайшие публикации</h3>
-        <button id="showAllContent" class="text-btn">Все</button>
+
+        <button
+          id="showAllContent"
+          class="text-btn"
+          type="button"
+        >
+          Все
+        </button>
+
       </div>
 
       <div id="upcomingList" class="upcoming-list"></div>
@@ -77,6 +126,7 @@
 
 
     <!-- КОНТЕНТ -->
+
     <section id="contentView" class="view">
 
       <div class="page-head">
@@ -86,7 +136,11 @@
           <p>Все публикации команды</p>
         </div>
 
-        <button id="addContentInline" class="primary-btn">
+        <button
+          id="addContentInline"
+          class="primary-btn"
+          type="button"
+        >
           + Контент
         </button>
 
@@ -98,6 +152,7 @@
 
 
     <!-- КОМАНДА -->
+
     <section id="teamView" class="view">
 
       <div class="page-head">
@@ -115,6 +170,7 @@
 
 
     <!-- АНАЛИТИКА -->
+
     <section id="analyticsView" class="view">
 
       <div class="page-head">
@@ -126,23 +182,53 @@
 
       </div>
 
+
       <div class="filter-row">
 
-        <button class="filter-btn active" data-period="week">
+        <button
+          class="filter-btn active"
+          data-period="week"
+          type="button"
+        >
           Неделя
         </button>
 
-        <button class="filter-btn" data-period="month">
+        <button
+          class="filter-btn"
+          data-period="month"
+          type="button"
+        >
           Месяц
         </button>
 
-        <button class="filter-btn" data-period="3months">
+        <button
+          class="filter-btn"
+          data-period="3months"
+          type="button"
+        >
           3 месяца
         </button>
 
-        <button class="filter-btn" data-period="all">
+        <button
+          class="filter-btn"
+          data-period="all"
+          type="button"
+        >
           Всё
         </button>
+
+        <select
+          id="analyticsPlatform"
+          class="analytics-platform-filter"
+        >
+          <option value="all">Все соцсети</option>
+          <option value="Telegram">Telegram</option>
+          <option value="Instagram">Instagram</option>
+          <option value="VK">VK</option>
+          <option value="TikTok">TikTok</option>
+          <option value="YouTube">YouTube</option>
+          <option value="Другое">Другое</option>
+        </select>
 
       </div>
 
@@ -159,24 +245,40 @@
           <strong id="statWeek">0</strong>
         </div>
 
+
         <div class="analytics-card">
+
           <h3>По соцсетям</h3>
+
           <div id="platformStats"></div>
+
         </div>
 
+
         <div class="analytics-card">
+
           <h3>По форматам</h3>
+
           <div id="formatStats"></div>
+
         </div>
 
+
         <div class="analytics-card">
+
           <h3>По дням недели</h3>
+
           <div id="weekdayStats"></div>
+
         </div>
 
+
         <div class="analytics-card">
+
           <h3>Нагрузка по ответственным</h3>
+
           <div id="assigneeStats"></div>
+
         </div>
 
       </div>
@@ -185,24 +287,41 @@
 
 
     <!-- НИЖНЯЯ НАВИГАЦИЯ -->
+
     <nav class="bottom-nav">
 
-      <button class="nav-item active" data-view="calendarView">
+      <button
+        class="nav-item active"
+        data-view="calendarView"
+        type="button"
+      >
         <span>▦</span>
         <small>Календарь</small>
       </button>
 
-      <button class="nav-item" data-view="contentView">
+      <button
+        class="nav-item"
+        data-view="contentView"
+        type="button"
+      >
         <span>◫</span>
         <small>Контент</small>
       </button>
 
-      <button class="nav-item" data-view="teamView">
+      <button
+        class="nav-item"
+        data-view="teamView"
+        type="button"
+      >
         <span>○</span>
         <small>Команда</small>
       </button>
 
-      <button class="nav-item" data-view="analyticsView">
+      <button
+        class="nav-item"
+        data-view="analyticsView"
+        type="button"
+      >
         <span>⌁</span>
         <small>Анализ</small>
       </button>
@@ -213,20 +332,36 @@
 
 
   <!-- МОДАЛЬНОЕ ОКНО -->
+
   <div id="modal" class="modal hidden">
 
-    <div class="modal-backdrop" data-close-modal></div>
+    <div
+      class="modal-backdrop"
+      data-close-modal
+    ></div>
+
 
     <div class="modal-sheet">
 
       <div class="modal-head">
 
         <div>
-          <h2 id="modalTitle">Новый контент</h2>
-          <p>Один контент может содержать несколько публикаций</p>
+
+          <h2 id="modalTitle">
+            Новый контент
+          </h2>
+
+          <p>
+            Один контент может содержать несколько публикаций
+          </p>
+
         </div>
 
-        <button class="close-btn" data-close-modal>
+        <button
+          class="close-btn"
+          data-close-modal
+          type="button"
+        >
           ×
         </button>
 
@@ -235,7 +370,10 @@
 
       <form id="contentForm">
 
-        <input type="hidden" id="editingContentId">
+        <input
+          type="hidden"
+          id="editingContentId"
+        >
 
 
         <label class="field">
@@ -321,6 +459,7 @@
 
 
   <!-- ШАБЛОН ПУБЛИКАЦИИ -->
+
   <template id="publicationTemplate">
 
     <article
@@ -472,7 +611,6 @@
       </div>
 
 
-      <!-- ОТВЕТСТВЕННЫЕ -->
       <div class="assignee-block">
 
         <div class="field-label">
@@ -499,7 +637,6 @@
       </div>
 
 
-      <!-- НАПОМИНАНИЯ -->
       <div class="reminders">
 
         <label>
